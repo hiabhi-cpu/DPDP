@@ -28,6 +28,13 @@ SERVICES := consent-service audit-service withdrawal-service emergency-service \
 # Output directory where compiled binaries will be placed
 BIN_DIR := bin
 
+# File where background service PIDs are saved by run-all
+PID_FILE := .service-pids
+
+# Ports each service listens on (consent=9000, audit=9001, ... integration=9007)
+# Used by stop-all to kill whatever process is actually bound to each port
+PORTS := 9000 9001 9002 9003 9004 9005 9006 9007
+
 
 # =============================================================================
 # TARGETS
@@ -86,22 +93,32 @@ run:
 ## run-all: run all 8 services in the background (dev only)
 .PHONY: run-all
 run-all:
+	# Clear any old PID file before starting fresh
+	@rm -f $(PID_FILE)
 	# @for loops over every service name in $(SERVICES)
 	# $$ is how you write a shell variable inside a Makefile (single $ is reserved for make)
 	# & at the end of a command means "run in background" (don't wait for it to finish)
+	# $$! captures the PID of the last background process and saves it to PID_FILE
 	@for svc in $(SERVICES); do \
 		echo "🚀 Starting $$svc..."; \
 		go run ./services/$$svc & \
+		echo $$! >> $(PID_FILE); \
 	done
-	@echo "All services started. Use 'make stop-all' to stop."
+	@echo "All services started. PIDs saved to $(PID_FILE). Use 'make stop-all' to stop."
 
 
-## stop-all: kill all services started by run-all
+## stop-all: kill whatever process is listening on each service port (9000-9007)
 .PHONY: stop-all
 stop-all:
-	# pkill searches for processes matching the pattern and kills them
-	# || true means: don't fail if no matching process is found (exit code 0 always)
-	@pkill -f "go run ./services" || true
+	# WHY PORT-BASED: 'go run' spawns a child process (the actual compiled binary).
+	# Killing the 'go run' PID leaves the real server still running on the port.
+	# fuser -k <port>/tcp kills whatever process is actually bound to that port.
+	# || true prevents make from failing if a port has no process on it.
+	@echo "🛑 Killing processes on ports 9000–9007..."
+	@for port in $(PORTS); do \
+		fuser -k $$port/tcp 2>/dev/null || true; \
+	done
+	@rm -f $(PID_FILE)
 	@echo "🛑 All services stopped."
 
 
