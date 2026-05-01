@@ -1,0 +1,12 @@
+go 1.26.2
+
+use (
+	./services/consent-service
+	./services/audit-service
+	./services/withdrawal-service
+	./services/emergency-service
+	./services/notification-service
+	./services/report-service
+	./services/auth-service
+	./services/integration-service
+)
