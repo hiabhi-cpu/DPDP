@@ -1,0 +1,49 @@
+# =============================================================================
+# SQLC Configuration — Auth Service
+# Docs: https://docs.sqlc.dev/en/latest/reference/config.html
+#
+# How it works:
+#   1. You write raw SQL queries in db/queries/
+#   2. Goose migrations in db/migrations/ define the schema
+#   3. `sqlc generate` reads both and generates type-safe Go code into db/sqlc/
+# =============================================================================
+
+version: "2"
+sql:
+  - engine: "postgresql"
+
+    # Where your SQL query files live (SELECT, INSERT, UPDATE, DELETE)
+    queries: "db/queries"
+
+    # Where Goose migration files live (CREATE TABLE, ALTER TABLE, etc.)
+    # SQLC reads these to understand table structure for type generation
+    schema: "db/migrations"
+
+    gen:
+      go:
+        # Go package name for the generated code
+        package: "db"
+
+        # Output directory for generated Go files
+        out: "db/sqlc"
+
+        # Add `json:"field_name"` tags to generated structs (for API responses)
+        emit_json_tags: true
+
+        # Generate an interface (Querier) — useful for mocking in tests
+        emit_interface: true
+
+        # Use exact table names as struct names (false = singularize: users → User)
+        emit_exact_table_names: false
+
+        # Emit context-aware methods (func (q *Queries) GetUser(ctx context.Context, ...))
+        emit_methods_with_db_argument: false
+
+        # Use pgx/v5 instead of database/sql for better postgres support
+        sql_package: "pgx/v5"
+
+        # Override default type mappings
+        overrides:
+          # Use uuid.UUID for postgres UUID columns
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"

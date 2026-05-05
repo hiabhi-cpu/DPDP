@@ -1,0 +1,57 @@
+# =============================================================================
+# DPDP Consent Manager — Docker Compose
+# Runs: PostgreSQL
+# Usage:
+#   docker compose up -d        → start in background
+#   docker compose down         → stop and remove containers
+#   docker compose down -v      → stop and remove containers + volumes (wipes DB)
+#   docker compose logs -f      → follow logs
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — primary database for all services
+  # Each service gets its own schema within the 'dpdp' database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: dpdp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-abhi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-5004}
+      POSTGRES_DB: ${POSTGRES_DB:-dpdp}
+      # Locale settings for proper text handling
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=en_US.UTF-8"
+    ports:
+      # host:container — exposes postgres on localhost:5432
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Named volume persists data across container restarts
+      - postgres_data:/var/lib/postgresql/data
+      # Init scripts run once on first container creation (alphabetical order)
+      - ./scripts/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      # pg_isready checks if postgres is accepting connections
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-abhi} -d ${POSTGRES_DB:-dpdp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - dpdp-network
+
+# =============================================================================
+# VOLUMES — named volumes managed by Docker (survive container restarts)
+# =============================================================================
+volumes:
+  postgres_data:
+    name: dpdp_postgres_data
+
+# =============================================================================
+# NETWORKS — isolated bridge network so services can talk by container name
+# =============================================================================
+networks:
+  dpdp-network:
+    name: dpdp-network
+    driver: bridge

@@ -140,3 +140,134 @@ help:
 	# grep finds all lines starting with ## in this Makefile
 	# sed strips the ## prefix so only the description is shown
 	@grep -E '^## ' Makefile | sed 's/## //'
+
+
+# =============================================================================
+# DATABASE — Docker Compose + PostgreSQL
+# Requires: docker, docker compose
+# Load .env automatically so POSTGRES_* vars are available
+# =============================================================================
+
+# Load .env file if it exists (exposes vars to make targets)
+ifneq (,$(wildcard ./.env))
+  include .env
+  export
+endif
+
+## db-up: start PostgreSQL in Docker (background)
+.PHONY: db-up
+db-up:
+	@echo "🐘 Starting PostgreSQL..."
+	@docker compose up -d postgres
+	@echo "⏳ Waiting for postgres to be healthy..."
+	@until docker compose exec postgres pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) > /dev/null 2>&1; do \
+		sleep 1; \
+	done
+	@echo "✅ PostgreSQL is ready at localhost:$(POSTGRES_PORT)"
+
+
+## db-down: stop PostgreSQL container (data is preserved in volume)
+.PHONY: db-down
+db-down:
+	@echo "🛑 Stopping PostgreSQL..."
+	@docker compose down
+	@echo "✅ PostgreSQL stopped."
+
+
+## db-reset: stop and WIPE all data (drops the volume) — use with caution!
+.PHONY: db-reset
+db-reset:
+	@echo "⚠️  WARNING: This will DELETE all data. Press Ctrl+C to cancel..."
+	@sleep 3
+	@docker compose down -v
+	@echo "🗑️  Data wiped. Run 'make db-up' to start fresh."
+
+
+## db-logs: follow PostgreSQL container logs
+.PHONY: db-logs
+db-logs:
+	@docker compose logs -f postgres
+
+
+## db-shell: open a psql shell inside the postgres container
+.PHONY: db-shell
+db-shell:
+	@docker compose exec postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
+
+
+# =============================================================================
+# GOOSE MIGRATIONS
+# Requires: goose → go install github.com/pressly/goose/v3/cmd/goose@latest
+# SVC variable selects which service's migrations to run (default: auth-service)
+# =============================================================================
+
+# Default service for migration commands
+SVC ?= auth-service
+
+# Add GOPATH/bin to PATH so goose and sqlc (installed via `go install`) are found
+export PATH := $(PATH):$(shell go env GOPATH)/bin
+
+GOOSE_DSN := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
+MIGRATIONS_DIR := services/$(SVC)/db/migrations
+
+## migrate-up: apply all pending migrations  →  make migrate-up SVC=auth-service
+.PHONY: migrate-up
+migrate-up:
+	@echo "⬆️  Running migrations for $(SVC)..."
+	@goose -dir $(MIGRATIONS_DIR) postgres "$(GOOSE_DSN)" up
+	@echo "✅ Migrations applied."
+
+
+## migrate-down: rollback the last migration  →  make migrate-down SVC=auth-service
+.PHONY: migrate-down
+migrate-down:
+	@echo "⬇️  Rolling back last migration for $(SVC)..."
+	@goose -dir $(MIGRATIONS_DIR) postgres "$(GOOSE_DSN)" down
+	@echo "✅ Rolled back."
+
+
+## migrate-status: show migration status  →  make migrate-status SVC=auth-service
+.PHONY: migrate-status
+migrate-status:
+	@goose -dir $(MIGRATIONS_DIR) postgres "$(GOOSE_DSN)" status
+
+
+## migrate-reset: rollback ALL migrations (wipes schema tables, keeps DB)
+.PHONY: migrate-reset
+migrate-reset:
+	@echo "⚠️  Resetting all migrations for $(SVC)..."
+	@goose -dir $(MIGRATIONS_DIR) postgres "$(GOOSE_DSN)" reset
+
+
+# =============================================================================
+# SQLC — Generate type-safe Go code from SQL queries
+# Requires: sqlc → go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+# =============================================================================
+
+## sqlc: generate Go code from SQL queries  →  make sqlc SVC=auth-service
+.PHONY: sqlc
+sqlc:
+	@echo "⚙️  Generating SQLC code for $(SVC)..."
+	@(cd services/$(SVC) && sqlc generate)
+	@echo "✅ SQLC code generated in services/$(SVC)/db/sqlc/"
+
+
+## sqlc-verify: check sqlc config without generating (CI-safe)
+.PHONY: sqlc-verify
+sqlc-verify:
+	@echo "🔍 Verifying SQLC config for $(SVC)..."
+	@(cd services/$(SVC) && sqlc vet)
+
+
+# =============================================================================
+# SETUP — Install required CLI tools (one-time)
+# =============================================================================
+
+## tools: install goose and sqlc CLI tools
+.PHONY: tools
+tools:
+	@echo "📦 Installing goose..."
+	@go install github.com/pressly/goose/v3/cmd/goose@latest
+	@echo "📦 Installing sqlc..."
+	@go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+	@echo "✅ Tools installed. Make sure $$(go env GOPATH)/bin is in your PATH."
