@@ -15,9 +15,9 @@ sql:
     # Where your SQL query files live (SELECT, INSERT, UPDATE, DELETE)
     queries: "db/queries"
 
-    # Where Goose migration files live (CREATE TABLE, ALTER TABLE, etc.)
-    # SQLC reads these to understand table structure for type generation
-    schema: "db/migrations"
+    # Dedicated schema file for SQLC (plain SQL, no Goose annotations).
+    # Goose migrations are in db/migrations/ — keep schema.sql in sync with them.
+    schema: "db/schema.sql"
 
     gen:
       go:
