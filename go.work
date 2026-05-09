@@ -1,6 +1,7 @@
 go 1.26.2
 
 use (
+	./shared
 	./services/consent-service
 	./services/audit-service
 	./services/withdrawal-service

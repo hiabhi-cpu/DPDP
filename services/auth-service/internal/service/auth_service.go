@@ -9,12 +9,12 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/hiabhi-cpu/DPDP/auth-service/config"
 	db "github.com/hiabhi-cpu/DPDP/auth-service/db/sqlc"
 	"github.com/hiabhi-cpu/DPDP/auth-service/internal/repository"
+	"github.com/hiabhi-cpu/DPDP/shared"
 )
 
 // Common auth errors — returned by service, mapped to HTTP status codes in handler.
@@ -104,11 +104,11 @@ func (s *authService) Register(ctx context.Context, input RegisterInput) (*AuthU
 
 	user, err := s.userRepo.CreateUser(ctx, db.CreateUserParams{
 		Role:         input.Role,
-		Email:        newText(*input.Email),
-		Phone:        newText(*input.Phone),
-		PasswordHash: newText(string(hash)),
+		Email:        shared.NewText(*input.Email),
+		Phone:        shared.NewText(*input.Phone),
+		PasswordHash: shared.NewText(string(hash)),
 		FullName:     input.FullName,
-		OrgID:        newText(*input.OrgID),
+		OrgID:        shared.NewText(*input.OrgID),
 	})
 	if err != nil {
 		// TODO: detect unique constraint violations and return ErrEmailAlreadyExists / ErrPhoneAlreadyExists
@@ -216,10 +216,3 @@ func toAuthUser(u db.AuthUser) *AuthUser {
 }
 
 func stringPtr(s string) *string { return &s }
-
-func newText(s string) pgtype.Text {
-	return pgtype.Text{
-		String: s,
-		Valid:  s != "",
-	}
-}

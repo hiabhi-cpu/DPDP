@@ -122,9 +122,12 @@ stop-all:
 	@echo "🛑 All services stopped."
 
 
-## tidy: run 'go mod tidy' in every service (cleans up unused dependencies)
+## tidy: run 'go mod tidy' in every service AND the shared module
 .PHONY: tidy
 tidy:
+	# Tidy the shared module first (services may depend on it)
+	@echo "🔧 Tidying shared..."
+	@(cd shared && go mod tidy)
 	# cd into each service dir and run go mod tidy
 	# go mod tidy: adds missing deps and removes unused ones from go.mod + go.sum
 	# Wrapping in () means the cd only affects that subshell, not the current shell
@@ -132,7 +135,7 @@ tidy:
 		echo "🔧 Tidying $$svc..."; \
 		(cd services/$$svc && go mod tidy); \
 	done
-
+	@echo "✅ All modules tidied."
 
 ## help: list all available make targets with descriptions
 .PHONY: help

@@ -42,10 +42,10 @@ func main() {
 	// SQLC queries → Repository → Service → Handler
 	queries := db.New(pool)
 
-	userRepo  := repository.NewUserRepository(queries)
+	userRepo := repository.NewUserRepository(queries)
 	tokenRepo := repository.NewTokenRepository(queries)
 
-	authSvc  := service.NewAuthService(userRepo, tokenRepo, cfg)
+	authSvc := service.NewAuthService(userRepo, tokenRepo, cfg)
 	authHandler := handler.NewAuthHandler(authSvc)
 
 	// ─── 4. Set up Gin router ──────────────────────────────────────────────────

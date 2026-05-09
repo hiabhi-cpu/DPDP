@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	db "github.com/hiabhi-cpu/DPDP/auth-service/db/sqlc"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/hiabhi-cpu/DPDP/shared"
 )
 
 // UserRepository defines the contract for all user-related DB operations.
@@ -39,11 +39,11 @@ func (r *userRepository) GetUserByID(ctx context.Context, id uuid.UUID) (db.Auth
 }
 
 func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (db.AuthUser, error) {
-	return r.queries.GetUserByEmail(ctx, newText(email))
+	return r.queries.GetUserByEmail(ctx, shared.NewText(email))
 }
 
 func (r *userRepository) GetUserByPhone(ctx context.Context, phone string) (db.AuthUser, error) {
-	return r.queries.GetUserByPhone(ctx, newText(phone))
+	return r.queries.GetUserByPhone(ctx, shared.NewText(phone))
 }
 
 func (r *userRepository) UpdateUserVerified(ctx context.Context, id uuid.UUID) (db.AuthUser, error) {
@@ -52,11 +52,4 @@ func (r *userRepository) UpdateUserVerified(ctx context.Context, id uuid.UUID) (
 
 func (r *userRepository) DeactivateUser(ctx context.Context, id uuid.UUID) error {
 	return r.queries.DeactivateUser(ctx, id)
-}
-
-func newText(s string) pgtype.Text {
-	return pgtype.Text{
-		String: s,
-		Valid:  s != "", // Or just true if you want empty strings to be valid
-	}
 }
