@@ -137,6 +137,18 @@ tidy:
 	done
 	@echo "✅ All modules tidied."
 
+## gen-keys: generate RSA key pair for auth-service JWT signing (run once for local dev)
+.PHONY: gen-keys
+gen-keys:
+	@echo "🔑 Generating RSA 2048 key pair for auth-service..."
+	@mkdir -p services/auth-service/keys
+	@openssl genrsa -out services/auth-service/keys/auth_private.pem 2048
+	@openssl rsa -in services/auth-service/keys/auth_private.pem -pubout \
+		-out services/auth-service/keys/auth_public.pem
+	@echo "✅ Keys written to services/auth-service/keys/"
+	@echo "   🔒 auth_private.pem — sign tokens (KEEP SECRET, never commit)"
+	@echo "   🔓 auth_public.pem  — verify tokens (safe to commit, share with services)"
+
 ## help: list all available make targets with descriptions
 .PHONY: help
 help:
