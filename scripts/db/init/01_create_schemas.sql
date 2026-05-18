@@ -7,11 +7,17 @@
 -- Auth service schema
 CREATE SCHEMA IF NOT EXISTS auth;
 
--- Future service schemas (uncomment as you build each service)
--- CREATE SCHEMA IF NOT EXISTS consent;
--- CREATE SCHEMA IF NOT EXISTS audit;
+-- Consent vault (core consent engine)
+CREATE SCHEMA IF NOT EXISTS consent;
+
+-- Append-only audit log
+CREATE SCHEMA IF NOT EXISTS audit;
+
+-- OTP sessions & notifications
+CREATE SCHEMA IF NOT EXISTS notification;
+
+-- Future schemas (Phase 2+)
 -- CREATE SCHEMA IF NOT EXISTS withdrawal;
--- CREATE SCHEMA IF NOT EXISTS notification;
 -- CREATE SCHEMA IF NOT EXISTS emergency;
 -- CREATE SCHEMA IF NOT EXISTS report;
 -- CREATE SCHEMA IF NOT EXISTS integration;

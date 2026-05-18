@@ -9,6 +9,7 @@
 #   make run-all                        → run all 8 services in background
 #   make stop-all                       → kill all background services
 #
+#   make hashkey KEY=my-raw-key         → generate bcrypt hash for an API key
 #   make tidy                           → go mod tidy in all services
 #   make help                           → list all targets
 #

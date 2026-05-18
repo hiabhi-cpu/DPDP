@@ -1,11 +1,12 @@
 # =============================================================================
 # DPDP Consent Manager — Docker Compose
-# Runs: PostgreSQL
+# Runs: PostgreSQL 16 + Redis 7
 # Usage:
-#   docker compose up -d        → start in background
+#   docker compose up -d        → start all services in background
 #   docker compose down         → stop and remove containers
 #   docker compose down -v      → stop and remove containers + volumes (wipes DB)
 #   docker compose logs -f      → follow logs
+#   docker compose logs -f redis → follow redis logs only
 # =============================================================================
 
 services:
@@ -18,9 +19,9 @@ services:
     container_name: dpdp-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-abhi}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-5004}
-      POSTGRES_DB: ${POSTGRES_DB:-dpdp}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
       # Locale settings for proper text handling
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=en_US.UTF-8"
     ports:
@@ -33,11 +34,34 @@ services:
       - ./scripts/db/init:/docker-entrypoint-initdb.d
     healthcheck:
       # pg_isready checks if postgres is accepting connections
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-abhi} -d ${POSTGRES_DB:-dpdp}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
+    networks:
+      - dpdp-network
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 — OTP TTL store, session cache
+  # Used by: notification-service (OTP store), future: job queue
+  # Local dev: ephemeral (no persistence) — OTPs are short-lived anyway
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: dpdp-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    # No persistence for local dev — faster startup, no AOF overhead
+    # In production: use AWS ElastiCache Redis 7 (ap-south-1)
+    command: redis-server --save "" --appendonly no --loglevel notice
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     networks:
       - dpdp-network
 
@@ -55,3 +79,4 @@ networks:
   dpdp-network:
     name: dpdp-network
     driver: bridge
+

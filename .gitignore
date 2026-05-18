@@ -2,6 +2,7 @@ bin
 
 # ─── Secrets — NEVER commit real credentials ───
 .env
+secrets/local_hospital_keys.json
 
 # ─── RSA Private Keys — NEVER commit ───
 # Private key signs JWTs in auth-service. Public key (auth_public.pem) IS safe to commit.
@@ -16,6 +17,10 @@ services/*/db/sqlc/
 *.out
 vendor/
 
+# ─── Frontend deps ───
+frontend/*/node_modules/
+frontend/*/.expo/
+
 # ─── IDE / OS noise ───
 .DS_Store
 .idea/
@@ -25,3 +30,4 @@ vendor/
 
 # ─── Docker volumes (if accidentally created locally) ───
 postgres_data/
+

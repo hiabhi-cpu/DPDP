@@ -1,13 +1,13 @@
 go 1.26.2
 
 use (
-	./shared
-	./services/consent-service
 	./services/audit-service
-	./services/withdrawal-service
+	./services/auth-service
+	./services/consent-service
 	./services/emergency-service
+	./services/integration-service
 	./services/notification-service
 	./services/report-service
-	./services/auth-service
-	./services/integration-service
+	./services/withdrawal-service
+	./shared
 )
