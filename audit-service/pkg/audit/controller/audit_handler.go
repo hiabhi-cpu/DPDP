@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
@@ -10,6 +11,9 @@ import (
 	"github.com/hiabhi-cpu/audit-service/pkg/audit/service"
 	"github.com/hiabhi-cpu/shared/middleware"
 )
+
+// maxPageLimit caps GET /logs page size so a single request cannot dump the table.
+const maxPageLimit = 200
 
 // AuditHandler holds HTTP handlers for the audit domain.
 type AuditHandler struct {
@@ -39,7 +43,9 @@ func (h *AuditHandler) LogEvent(c *gin.Context) {
 	// The caller is an authenticated internal service (InternalServiceAuth); it
 	// supplies hospital_id in the payload.
 	if err := h.svc.LogEvent(c.Request.Context(), &event); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Log the real cause; never echo internal errors to the caller.
+		log.Printf("audit-service: LogEvent failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to log event"})
 		return
 	}
 
@@ -55,8 +61,19 @@ func (h *AuditHandler) GetLogs(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	// Clamp pagination: a bad or hostile value must not become a negative
+	// OFFSET (500) or an unbounded LIMIT (table dump in one response).
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	if err != nil || limit < 1 {
+		limit = 50
+	}
+	if limit > maxPageLimit {
+		limit = maxPageLimit
+	}
 	eventType := c.Query("event_type")
 
 	filter := model.AuditLogFilter{
@@ -68,7 +85,8 @@ func (h *AuditHandler) GetLogs(c *gin.Context) {
 
 	pageData, err := h.svc.GetLogs(c.Request.Context(), filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("audit-service: GetLogs failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch logs"})
 		return
 	}
 

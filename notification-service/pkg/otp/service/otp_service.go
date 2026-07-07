@@ -15,11 +15,20 @@ import (
 type OTPService interface {
 	Send(ctx context.Context, mobile string) (*model.SendOTPResponse, error)
 	Verify(ctx context.Context, req *model.VerifyOTPRequest) (sessionID string, err error)
+	// ValidateSession reports whether sessionID is a live, OTP-verified session
+	// for the given mobile. Called by consent-service (via /internal) before a
+	// consent row is written — this is what makes otp_verified=true true.
+	ValidateSession(ctx context.Context, sessionID, mobile string) error
 }
 
 const (
 	otpExpiry     = 3 * time.Minute
 	sessionExpiry = 15 * time.Minute
+
+	// Abuse guards: a 6-digit OTP survives ~5 guesses; SMS costs money.
+	maxVerifyAttempts = 5
+	sendCooldown      = 60 * time.Second
+	maxSendsPerHour   = 5
 )
 
 type otpService struct {
@@ -33,6 +42,22 @@ func NewOTPService(repo repository.OTPStore, smsClient SMSClient) OTPService {
 }
 
 func (s *otpService) Send(ctx context.Context, mobile string) (*model.SendOTPResponse, error) {
+	// Hourly cap first (rejected sends still count), then the resend cooldown.
+	sends, err := s.repo.IncrHourlySends(ctx, mobile)
+	if err != nil {
+		return nil, fmt.Errorf("service.Send: %w", err)
+	}
+	if sends > maxSendsPerHour {
+		return nil, ErrTooManyRequests
+	}
+	ok, err := s.repo.AcquireSendCooldown(ctx, mobile, sendCooldown)
+	if err != nil {
+		return nil, fmt.Errorf("service.Send: %w", err)
+	}
+	if !ok {
+		return nil, ErrTooManyRequests
+	}
+
 	otp, err := sharedcrypto.GenerateOTP()
 	if err != nil {
 		return nil, fmt.Errorf("service.Send: failed to generate OTP: %w", err)
@@ -63,6 +88,17 @@ func (s *otpService) Send(ctx context.Context, mobile string) (*model.SendOTPRes
 }
 
 func (s *otpService) Verify(ctx context.Context, req *model.VerifyOTPRequest) (string, error) {
+	// Count the attempt BEFORE checking the code, and burn the OTP once the
+	// budget is spent — a 6-digit code must never be brute-forceable.
+	attempts, err := s.repo.IncrVerifyAttempts(ctx, req.ReferenceID, otpExpiry)
+	if err != nil {
+		return "", fmt.Errorf("service.Verify: %w", err)
+	}
+	if attempts > maxVerifyAttempts {
+		_ = s.repo.DeleteOTP(ctx, req.ReferenceID)
+		return "", ErrInvalidOTP
+	}
+
 	hash, storedMobile, err := s.repo.GetOTPHash(ctx, req.ReferenceID)
 	if err != nil {
 		return "", ErrInvalidOTP
@@ -93,7 +129,25 @@ func (s *otpService) Verify(ctx context.Context, req *model.VerifyOTPRequest) (s
 	return sessionID, nil
 }
 
+// ValidateSession confirms a live verified session exists for (sessionID,
+// mobile). The mobile must match the one the OTP was sent to, so a session
+// obtained for one patient cannot vouch for another.
+func (s *otpService) ValidateSession(ctx context.Context, sessionID, mobile string) error {
+	state, err := s.repo.GetSession(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("service.ValidateSession: %w", err)
+	}
+	if state == nil || !state.Verified || state.Mobile != mobile {
+		return ErrSessionNotVerified
+	}
+	return nil
+}
+
 // Sentinel errors
 var (
 	ErrInvalidOTP = fmt.Errorf("invalid or expired OTP")
+	// ErrTooManyRequests — send cooldown or hourly cap hit (HTTP 429).
+	ErrTooManyRequests = fmt.Errorf("too many OTP requests")
+	// ErrSessionNotVerified — session missing, expired, or mobile mismatch.
+	ErrSessionNotVerified = fmt.Errorf("otp session not verified")
 )

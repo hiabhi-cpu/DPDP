@@ -38,6 +38,10 @@ func (h *ConsentHandler) Capture(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
+		if errors.Is(err, service.ErrSessionNotVerified) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "otp session invalid or expired — verify OTP first"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to capture consent"})
 		return
 	}
@@ -106,6 +110,10 @@ func (h *ConsentHandler) Withdraw(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		}
+		if errors.Is(err, service.ErrSessionNotVerified) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "otp session invalid or expired — verify OTP first"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to withdraw consent"})
 		return
 	}
@@ -132,6 +140,10 @@ func (h *ConsentHandler) Grant(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, service.ErrNoConsentToRenew) {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, service.ErrSessionNotVerified) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "otp session invalid or expired — verify OTP first"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to grant consent"})

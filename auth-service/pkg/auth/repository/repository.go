@@ -59,8 +59,8 @@ func (r *pgxHospitalRepository) GetByAPIKeyHash(ctx context.Context, hash string
 		&h.CreatedAt,
 	)
 	if err != nil {
-		// return nil, err so the service layer can handle pgx.ErrNoRows if it wants,
-		// or we can wrap it. Let's just return the err for now.
+		// Wrapped with %w so the service can errors.Is(err, pgx.ErrNoRows) and
+		// treat "no such key" differently from a real DB failure.
 		return nil, fmt.Errorf("repository.GetByAPIKeyHash: %w", err)
 	}
 	return &h, nil

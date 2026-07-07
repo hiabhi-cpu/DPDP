@@ -26,3 +26,9 @@ type SessionState struct {
 	Verified  bool      `json:"verified"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
+
+// ValidateSessionRequest is the body for POST /internal/v1/otp/session/validate.
+type ValidateSessionRequest struct {
+	SessionID string `json:"session_id" binding:"required"`
+	Mobile    string `json:"mobile" binding:"required,len=10"`
+}

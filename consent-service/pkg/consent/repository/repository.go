@@ -126,6 +126,7 @@ func (r *pgxConsentRepository) Insert(ctx context.Context, consent *model.Consen
 		consent.Purposes,
 		consent.ArtifactHash,
 		nullIfEmpty(consent.IdempotencyKey),
+		consent.CreatedAt,
 	).Scan(&consent.CreatedAt, &consent.Version)
 
 	if err != nil {
@@ -204,6 +205,7 @@ func (r *pgxConsentRepository) insertChainedRow(ctx context.Context, query strin
 		consent.PreviousID,
 		consent.Version,
 		consent.ArtifactHash,
+		consent.CreatedAt,
 	).Scan(&consent.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)

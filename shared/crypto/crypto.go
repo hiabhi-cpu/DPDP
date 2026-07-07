@@ -7,6 +7,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -84,10 +85,12 @@ func HashAPIKey(rawKey string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// VerifyAPIKey is kept for backwards compatibility in interface, but mostly
-// we just re-hash the incoming key and check the DB directly now.
+// VerifyAPIKey compares a raw key against a stored hash in constant time, so
+// the comparison itself cannot leak hash prefixes via timing. Kept for
+// backwards compatibility; the main login path re-hashes and looks up the DB.
 func VerifyAPIKey(rawKey, hash string) bool {
-	return HashAPIKey(rawKey) == hash
+	computed := HashAPIKey(rawKey)
+	return subtle.ConstantTimeCompare([]byte(computed), []byte(hash)) == 1
 }
 
 // ComputeArtifactHash generates a SHA-256 tamper-evident hash of a consent

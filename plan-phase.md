@@ -65,7 +65,9 @@ Done before Phase-2 so new services inherit corrected patterns. Full detail in
 | ⬜ | mobile | `frontend/kiosk/` — React Native Expo, online OTP + consent form |
 | ✅🔺 | test | **Tenant-isolation test suite** — pulled forward from Phase 3, now written & green (`consent-service/test/`, 6 cases: read isolation, fail-closed, bogus context, append-only ×2, role-not-privileged). Build-tagged `integration`; run via `test/run-isolation.sh`. **CI wiring still pending (Phase 3).** |
 | ✅➕ | infra | **Monorepo consolidation** — was 7 single-commit per-service repos + untracked root docs, with `replace ../shared` coupling across repo boundaries. Now one root repo (`main`), root `.gitignore` + `go.work`; nested `.git` dirs backed up then removed. One CI pipeline in P3 instead of seven. |
-| ⬜➕ | BE | **OTP abuse protection** in notification-service — per-mobile + per-hospital attempt limits, verify lockout, resend cooldown (Redis counters). Code has none today; blocks kiosk going public (OTP brute-force + SMS-pumping cost attack). |
+| ✅➕ | BE | **OTP abuse protection** in notification-service — done (2026-07-07): 5-attempt verify cap (OTP burned on exceed), 60s resend cooldown + 5/hour per-mobile send cap (Redis), 429 responses; mock SMS log masks the mobile. |
+| ✅➕ | BE | **Consent writes gated on verified OTP session** — done (2026-07-07): `otp_verified=true` was written unconditionally with no check anywhere (verified sessions were stored in Redis but never read). notification-service now exposes `POST /internal/v1/otp/session/validate` (service-token auth); consent-service capture/withdraw/grant verify `session_id`+mobile against it before any vault write (403 on failure, fail-closed on outage). Idempotent replays still work after session expiry. |
+| ✅➕ | BE | **Security-review fixes (2026-07-07)** — spoofable audit IPs (all 5 services now `SetTrustedProxies(nil)`); artifact hash made re-verifiable (deterministic purpose serialization + hash computed over the *stored* `created_at`; was `%v` of a Go map + a discarded timestamp); audit-service no longer echoes internal errors and clamps `page`/`limit`; auth-service logs DB failures as 500 instead of masking as 401; constant-time API-key compare in `shared/crypto`. |
 | ⬜➕ | DB | **§9 schema groundwork** — vault columns for `data_principal_type` (ADULT / CHILD / GUARDIAN_CONSENT), guardian identity + relationship, and which mobile received the OTP. Migration is cheap now, painful after pilot data exists. Kiosk guardian *flow* is P2; hard gate before P3 real patients. |
 | ✅🔺 | infra | **Migration tooling** — pulled forward, done. `init/` retired → tracked migrations in `DPDP/scripts/db/migrations/` (0001–0010) + `public.schema_migrations`, run by `migrate.sh` (up/status/baseline/seed). Dev seed split out of the schema. Compose applies via a one-shot `migrate` service. Files are tool-agnostic SQL (goose swap-in later is mechanical). Verified: clean from-scratch apply + baseline of the existing volume. |
 
@@ -227,7 +229,7 @@ From a full-project review against the DPDP Act and the code. Rows marked ➕ ab
 | Gap | Phase | Why that phase |
 |---|---|---|
 | Monorepo consolidation — ✅ done | P1 (now) | Was 7 disconnected single-commit repos + untracked docs; everything downstream assumes one history |
-| OTP abuse protection | P1 | Verified absent in code; blocks kiosk exposure |
+| OTP abuse protection — ✅ done | P1 | Verify cap + resend cooldown + hourly cap shipped 2026-07-07 |
 | §9 children/guardian — schema | P1 | Cheap before data exists, painful after |
 | Named-user login design (dashboard) | P1 | Avoid auth rewrite when P3 RBAC lands |
 | Consent-check fail-open/closed policy | P2 | Must precede hms-widget |
@@ -256,7 +258,8 @@ From a full-project review against the DPDP Act and the code. Rows marked ➕ ab
    hospital. Audit view can call the existing `GET /api/v1/audit/logs`, but the
    consent-stats screen needs a new `GET /api/v1/consent/stats` first (see the
    endpoint map in Phase 1). Design its login for named users (➕ note above).
-6. **➕ OTP abuse protection** — small, self-contained, closes a real attack
-   surface before any kiosk work makes the OTP endpoints patient-facing.
+6. ~~**➕ OTP abuse protection**~~ — ✅ done (2026-07-07), together with the
+   security-review fixes (verified-OTP gating of consent writes, trusted-proxy
+   hardening, re-verifiable artifact hashes).
 7. **➕ §9 schema migration** — one migration file now saves a pilot-data
    migration later; the kiosk guardian flow (P2) depends on it.

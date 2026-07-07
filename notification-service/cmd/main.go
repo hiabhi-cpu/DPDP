@@ -49,6 +49,10 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
+	// Trust no proxy by default: ClientIP() falls back to the socket address,
+	// so a client cannot spoof the audit-trail IP via X-Forwarded-For. When a
+	// load balancer fronts the service, list its CIDR here instead.
+	_ = r.SetTrustedProxies(nil)
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 

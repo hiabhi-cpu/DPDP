@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,6 +24,9 @@ var (
 	// ErrNoConsentToRenew — grant requires an existing consent chain to extend;
 	// a first-time consent must go through Capture.
 	ErrNoConsentToRenew = errors.New("no existing consent to grant onto")
+	// ErrSessionNotVerified — the session_id is not a live OTP-verified session
+	// for this mobile. No consent operation may proceed without one.
+	ErrSessionNotVerified = errors.New("otp session not verified")
 )
 
 // Check reasons (plan §11): distinguish never-granted from withdrawn.
@@ -46,15 +51,18 @@ type ConsentService interface {
 type consentService struct {
 	repo            repository.ConsentRepository
 	secretsProvider secrets.Provider
+	sessions        SessionVerifier
 }
 
 // NewConsentService creates a ConsentService. Audit events are written to the
 // transactional outbox (via repo) and shipped asynchronously by the relay — the
-// service no longer calls audit-service directly.
-func NewConsentService(repo repository.ConsentRepository, sp secrets.Provider) ConsentService {
+// service no longer calls audit-service directly. sessions gates every write
+// operation on a live OTP-verified session.
+func NewConsentService(repo repository.ConsentRepository, sp secrets.Provider, sessions SessionVerifier) ConsentService {
 	return &consentService{
 		repo:            repo,
 		secretsProvider: sp,
+		sessions:        sessions,
 	}
 }
 
@@ -70,6 +78,30 @@ func (s *consentService) patientKeyFor(ctx context.Context, hospitalID, mobile s
 		return "", fmt.Errorf("failed to get hospital key: %w", err)
 	}
 	return sharedcrypto.ComputePatientKey(mobile, sysSalt, hospKey), nil
+}
+
+// canonicalPurposeMap renders a purpose-state map deterministically as
+// "purpose=STATE" pairs, key-sorted and comma-joined. Go map iteration order is
+// random, so hashing fmt.Sprintf("%v", m) would produce an unverifiable hash.
+func canonicalPurposeMap(m map[string]model.PurposeState) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	pairs := make([]string, 0, len(keys))
+	for _, k := range keys {
+		pairs = append(pairs, k+"="+string(m[k]))
+	}
+	return strings.Join(pairs, ",")
+}
+
+// hashTimestamp returns the consent row's creation time in the exact form used
+// inside the artifact hash. The time is truncated to microseconds first because
+// timestamptz stores microseconds — an untruncated value would never re-verify
+// after a DB round-trip.
+func hashTimestamp(t time.Time) string {
+	return t.Format(time.RFC3339Nano)
 }
 
 // buildOutbox serializes an audit event into an outbox record. The record ID is
@@ -98,6 +130,13 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 		}
 	}
 
+	// The session check runs AFTER the idempotency replay (a replay returns the
+	// original row even once its session has expired) but BEFORE any write: a
+	// consent row must never exist without a real OTP verification behind it.
+	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile); err != nil {
+		return nil, false, fmt.Errorf("ConsentService.Capture: %w", err)
+	}
+
 	// Re-grant of a withdrawn purpose is out of scope for now: capture is blocked
 	// only while some purpose is still active. After a full withdrawal (no active
 	// purposes) a fresh capture is allowed.
@@ -115,14 +154,17 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 		purposes[p] = model.PurposeActive
 	}
 
+	// The hash is computed over the same created_at that is stored on the row
+	// (truncated to timestamptz's microsecond precision), so anyone can later
+	// recompute and compare it — that recomputability IS the tamper evidence.
 	consentID := uuid.New()
-	purposesStr := fmt.Sprintf("%v", req.Purposes)
+	createdAt := time.Now().UTC().Truncate(time.Microsecond)
 	artifactHash := sharedcrypto.ComputeArtifactHash(
 		consentID.String(),
 		hospitalID,
 		patientKey,
-		purposesStr,
-		time.Now().Format(time.RFC3339),
+		canonicalPurposeMap(purposes),
+		hashTimestamp(createdAt),
 	)
 
 	consent := &model.Consent{
@@ -133,6 +175,7 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 		Type:           model.TypeConsentGiven,
 		Status:         model.StatusActive,
 		Purposes:       purposes,
+		CreatedAt:      createdAt,
 		ArtifactHash:   artifactHash,
 		IdempotencyKey: req.SessionID,
 	}
@@ -246,6 +289,11 @@ func (s *consentService) Withdraw(ctx context.Context, hospitalID, ip string, re
 		return fmt.Errorf("ConsentService.Withdraw: %w", err)
 	}
 
+	// A withdrawal mutates legal state — it needs the same OTP proof as capture.
+	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile); err != nil {
+		return fmt.Errorf("ConsentService.Withdraw: %w", err)
+	}
+
 	existing, err := s.repo.GetLatestByPatientKey(ctx, hospitalID, patientKey)
 	if err != nil {
 		return fmt.Errorf("ConsentService.Withdraw: %w", err)
@@ -284,13 +332,13 @@ func (s *consentService) Withdraw(ctx context.Context, hospitalID, ip string, re
 	}
 
 	newID := uuid.New()
-	purposesStr := fmt.Sprintf("%v", newMap)
+	createdAt := time.Now().UTC().Truncate(time.Microsecond)
 	artifactHash := sharedcrypto.ComputeArtifactHash(
 		newID.String(),
 		hospitalID,
 		patientKey,
-		purposesStr,
-		time.Now().Format(time.RFC3339),
+		canonicalPurposeMap(newMap),
+		hashTimestamp(createdAt),
 	)
 
 	withdrawnConsent := &model.Consent{
@@ -300,6 +348,7 @@ func (s *consentService) Withdraw(ctx context.Context, hospitalID, ip string, re
 		HMSPatientID: existing.HMSPatientID, // carry forward so latest row stays resolvable by HMS ID
 		Type:         model.TypeWithdrawal,
 		Purposes:     newMap,
+		CreatedAt:    createdAt,
 		PreviousID:   &existing.ID,
 		Version:      existing.Version + 1,
 		ArtifactHash: artifactHash,
@@ -346,6 +395,11 @@ func (s *consentService) Grant(ctx context.Context, hospitalID, ip string, req *
 		return nil, false, fmt.Errorf("ConsentService.Grant: %w", err)
 	}
 
+	// A grant creates new processing permission — same OTP proof as capture.
+	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile); err != nil {
+		return nil, false, fmt.Errorf("ConsentService.Grant: %w", err)
+	}
+
 	existing, err := s.repo.GetLatestByPatientKey(ctx, hospitalID, patientKey)
 	if err != nil {
 		return nil, false, fmt.Errorf("ConsentService.Grant: %w", err)
@@ -374,13 +428,13 @@ func (s *consentService) Grant(ctx context.Context, hospitalID, ip string, req *
 	}
 
 	newID := uuid.New()
-	purposesStr := fmt.Sprintf("%v", newMap)
+	createdAt := time.Now().UTC().Truncate(time.Microsecond)
 	artifactHash := sharedcrypto.ComputeArtifactHash(
 		newID.String(),
 		hospitalID,
 		patientKey,
-		purposesStr,
-		time.Now().Format(time.RFC3339),
+		canonicalPurposeMap(newMap),
+		hashTimestamp(createdAt),
 	)
 
 	renewed := &model.Consent{
@@ -391,6 +445,7 @@ func (s *consentService) Grant(ctx context.Context, hospitalID, ip string, req *
 		Type:         model.TypeRenewal,
 		Status:       model.StatusActive, // any granted purpose ⇒ ACTIVE
 		Purposes:     newMap,
+		CreatedAt:    createdAt,
 		PreviousID:   &existing.ID,
 		Version:      existing.Version + 1,
 		ArtifactHash: artifactHash,

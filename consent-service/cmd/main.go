@@ -47,12 +47,16 @@ func main() {
 
 	repo := repository.New(db)
 
-	svc := service.NewConsentService(repo, secretsProvider)
+	// Service-token client shared by the audit shipper and the OTP session
+	// verifier (both call /internal endpoints on sibling services).
+	tokens := serviceauth.NewClient(env.AuthServiceURL, serviceName, env.ServiceTokenSecret)
+	sessions := service.NewSessionVerifier(env.NotificationServiceURL, tokens)
+
+	svc := service.NewConsentService(repo, secretsProvider, sessions)
 	handler := controller.NewConsentHandler(svc)
 
 	// Audit relay: ships transactionally-queued audit events to audit-service
 	// using a cached service token from auth-service.
-	tokens := serviceauth.NewClient(env.AuthServiceURL, serviceName, env.ServiceTokenSecret)
 	shipper := service.NewAuditShipper(env.AuditServiceURL, tokens)
 	relay := outbox.NewRelay(repo, shipper, 2*time.Second, 100)
 
@@ -62,6 +66,10 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
+	// Trust no proxy by default: ClientIP() falls back to the socket address,
+	// so a client cannot spoof the audit-trail IP via X-Forwarded-For. When a
+	// load balancer fronts the service, list its CIDR here instead.
+	_ = r.SetTrustedProxies(nil)
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 

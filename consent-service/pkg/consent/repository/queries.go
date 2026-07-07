@@ -1,12 +1,15 @@
 package repository
 
 const (
+	// created_at is supplied by the service (not the DB default) because the
+	// artifact hash is computed over it — the stored value and the hashed value
+	// must be identical for the hash to be re-verifiable.
 	queryInsertConsent = `
 		INSERT INTO consent.consent_vault (
 			id, hospital_id, patient_key, hms_patient_id, type, status, purposes,
-			otp_verified, artifact_hash, idempotency_key
+			otp_verified, artifact_hash, idempotency_key, created_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, true, $8, $9
+			$1, $2, $3, $4, $5, $6, $7, true, $8, $9, $10
 		) RETURNING created_at, version
 	`
 
@@ -42,9 +45,9 @@ const (
 	queryInsertWithdrawn = `
 		INSERT INTO consent.consent_vault (
 			id, hospital_id, patient_key, hms_patient_id, type, status, purposes,
-			otp_verified, previous_id, version, artifact_hash
+			otp_verified, previous_id, version, artifact_hash, created_at
 		) VALUES (
-			$1, $2, $3, $4, 'WITHDRAWAL', $5, $6, true, $7, $8, $9
+			$1, $2, $3, $4, 'WITHDRAWAL', $5, $6, true, $7, $8, $9, $10
 		) RETURNING created_at
 	`
 
@@ -53,9 +56,9 @@ const (
 	queryInsertRenewal = `
 		INSERT INTO consent.consent_vault (
 			id, hospital_id, patient_key, hms_patient_id, type, status, purposes,
-			otp_verified, previous_id, version, artifact_hash
+			otp_verified, previous_id, version, artifact_hash, created_at
 		) VALUES (
-			$1, $2, $3, $4, 'CONSENT_RENEWAL', $5, $6, true, $7, $8, $9
+			$1, $2, $3, $4, 'CONSENT_RENEWAL', $5, $6, true, $7, $8, $9, $10
 		) RETURNING created_at
 	`
 

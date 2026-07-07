@@ -15,6 +15,16 @@ func Setup(r *gin.Engine, otpHandler *controller.OTPHandler, pubKey *rsa.PublicK
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "notification-service"})
 	})
 
+	internal := r.Group("/internal")
+	internal.Use(middleware.InternalServiceAuth(pubKey))
+	{
+		v1 := internal.Group("/v1")
+		{
+			// consent-service checks capture/withdraw/grant session_ids here.
+			v1.POST("/otp/session/validate", otpHandler.ValidateSession)
+		}
+	}
+
 	api := r.Group("/api")
 	api.Use(middleware.JWTAuth(pubKey))
 	{

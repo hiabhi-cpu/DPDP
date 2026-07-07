@@ -3,11 +3,14 @@ package service
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	sharedcrypto "github.com/hiabhi-cpu/shared/crypto"
 	"github.com/hiabhi-cpu/shared/middleware"
 
@@ -56,11 +59,13 @@ func (s *authService) IssueToken(ctx context.Context, rawAPIKey string) (*model.
 	// 2. O(1) lookup in the database
 	matched, err := s.repo.GetByAPIKeyHash(ctx, hash)
 	if err != nil {
-		// We could check for pgx.ErrNoRows specifically, but any error here
-		// for a lookup essentially means unauthorized or DB failure.
-		// Let's just return ErrInvalidAPIKey to not leak DB errors to client,
-		// though in a real app we might log the internal error.
-		return nil, ErrInvalidAPIKey
+		// Only an unknown key is 401. A DB failure must surface as a 500 and be
+		// logged — otherwise an outage looks like thousands of bad API keys.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrInvalidAPIKey
+		}
+		log.Printf("auth-service: IssueToken lookup failed: %v", err)
+		return nil, fmt.Errorf("service.IssueToken: %w", err)
 	}
 
 	if matched == nil {
