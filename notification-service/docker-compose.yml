@@ -1,0 +1,35 @@
+# notification-service — standalone compose (polyrepo style).
+# Requires shared EXTERNAL infra (redis on the dpdp-network) — see ../DOCKER.md.
+# Run from this directory:  docker compose up -d --build
+# Build context is the repo root (..) because go.mod uses `replace ../shared`.
+# The JWT public key lives in auth-service/keys (mounted read-only).
+services:
+  notification-service:
+    container_name: dpdp-notification
+    build:
+      context: ..
+      dockerfile: notification-service/Dockerfile
+    environment:
+      NOTIFICATION_SERVICE_PORT: "9004"
+      REDIS_URL: "redis://redis:6379/0"
+      JWT_PUBLIC_KEY_PATH: /keys/auth_public.pem
+      SMS_PROVIDER: mock
+      MSG91_AUTH_KEY: ${MSG91_AUTH_KEY:-mock}
+      MSG91_TEMPLATE_ID: ${MSG91_TEMPLATE_ID:-mock}
+    ports:
+      - "9004:9004"
+    volumes:
+      - ../auth-service/keys:/keys:ro
+    restart: unless-stopped
+    networks:
+      - dpdp-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9004/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+networks:
+  dpdp-network:
+    external: true

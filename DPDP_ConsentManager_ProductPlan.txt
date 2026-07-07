@@ -1,0 +1,1056 @@
+================================================================================
+DPDP CONSENT MANAGER — PRODUCT REQUIREMENTS & TECHNICAL PLAN
+Version 1.0 | April 2026
+Author: [Your Name]
+Status: Draft — Step 1 Only (Consent Management Software)
+================================================================================
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1.  Project Overview
+2.  Problem Statement
+3.  Product Scope (Two-Step Roadmap)
+4.  Regulatory Context
+5.  Core Concepts & Definitions
+6.  System Architecture
+7.  Detailed Flow — Patient at Hospital A (New Patient)
+8.  Detailed Flow — Patient at Hospital B (Returning Patient)
+9.  Detailed Flow — Doctor Access
+10. Detailed Flow — Emergency Access
+11. Detailed Flow — Consent Withdrawal
+12. Detailed Flow — Data Breach Notification
+13. User Roles & Portals
+14. API Endpoints
+15. Data Models
+16. Technology Stack
+17. Security Requirements
+18. Build Roadmap (Phase-by-Phase)
+19. Corrections to Original Plan
+20. Open Questions / To Be Decided
+
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+Product Name    : DPDP Consent Manager
+Type            : B2B SaaS — Healthcare Compliance Middleware
+Target Market   : Small to medium private hospitals (50–300 beds), Mumbai first
+Primary Law     : Digital Personal Data Protection (DPDP) Act 2023 +
+                  DPDP Rules 2025 (notified Nov 13, 2025)
+Enforcement     : Full compliance mandatory from May 13, 2027
+Penalty         : Up to Rs. 250 Crore per breach
+Our Role        : Data Processor (consent artifacts only)
+Hospital Role   : Data Fiduciary (owns all clinical data)
+
+The DPDP Consent Manager is a middleware layer that sits between a hospital's
+existing Hospital Management System (HMS) and their legal obligations under the
+DPDP Act 2023. It does NOT replace any existing HMS. It adds a compliance layer
+on top without changing the hospital's existing workflows.
+
+Core promise to hospitals:
+  "Your staff does exactly what they do today.
+   Your patients are DPDP-compliant automatically."
+
+
+================================================================================
+2. PROBLEM STATEMENT
+================================================================================
+
+Under the DPDP Act 2023:
+
+  a) Every hospital is a "Data Fiduciary" — legally responsible for how they
+     collect, store, and use patient data.
+
+  b) Explicit, informed, purpose-specific DIGITAL consent must be obtained
+     from every patient before collecting their personal data.
+
+  c) Paper consent forms are NO LONGER VALID under DPDP Rules 2025.
+
+  d) A Data Protection Officer (DPO) must be appointed.
+
+  e) Any data breach must be reported to the Data Protection Board of India
+     (DPBI) within 72 hours.
+
+  f) Patients have the right to access, correct, and delete their data.
+
+  g) Penalties: up to Rs. 200 Crore for failure to notify a breach,
+     Rs. 250 Crore for failure to protect data.
+
+Current reality in Indian hospitals (especially small/medium):
+  - 65%+ hospitals still use paper consent forms
+  - Most HMS vendors have not built DPDP compliance modules
+  - No affordable, healthcare-specific consent manager exists for SMB hospitals
+  - Most hospital IT teams cannot build or maintain a compliance product
+  - DPDP Consent Manager registration only opens November 2026 — first mover wins
+
+Our software solves this by being the DPDP compliance layer that any hospital
+can plug into their existing HMS in under 30 days.
+
+
+================================================================================
+3. PRODUCT SCOPE — TWO-STEP ROADMAP
+================================================================================
+
+STEP 1 — DPDP Consent Management Software (Current Focus)
+----------------------------------------------------------
+Build a standalone consent management platform that:
+  - Captures DPDP-compliant digital consent from patients at OPD/IPD
+  - Stores consent records in an immutable, encrypted audit vault
+  - Integrates with existing HMS via webhooks and REST API
+  - Provides dashboards for DPO, Hospital Admin, and Patients
+  - Handles consent withdrawal, emergency access, and breach notifications
+  - Works offline (tablet kiosk for hospitals with poor internet)
+
+This step does NOT require ABDM integration. Hospitals without ABHA IDs
+can still use Step 1 for full DPDP compliance.
+
+STEP 2 — ABDM Integration (Future)
+-------------------------------------
+Extend Step 1 to include:
+  - ABHA health ID creation and linking (M1)
+  - Consent-based health record sharing between hospitals (M2)
+  - Health information exchange via FHIR R4 bundles (M3)
+
+Step 2 documentation will be written separately after Step 1 ships.
+
+
+================================================================================
+4. REGULATORY CONTEXT
+================================================================================
+
+Key DPDP Act provisions relevant to our product:
+
+  Section 6   : Valid consent must be free, informed, specific, clear, and
+                revocable. Must be requested for each specific purpose separately.
+
+  Section 7(b): Deemed consent for emergency — processing is allowed without
+                explicit consent when necessary to protect patient's life or
+                health in an emergency. CRITICAL: This is NOT a blanket bypass.
+                Every emergency access must be LOGGED with doctor ID, timestamp,
+                and clinical reason. Retrospective consent must be obtained once
+                patient is stable.
+
+  Section 11  : Patient (Data Principal) has the right to access, correct, and
+                erase their personal data. Must be processed within 30 days.
+
+  Section 17  : Data breach must be reported to DPBI. Timeline is specified in
+                DPDP Rules (72 hours for breach notification to DPBI).
+
+  Rule 3      : Consent notice must be standalone, clear, plain language,
+                specify each data category and purpose.
+
+  Rule 4      : Consent Manager registration framework — opens November 2026.
+                Only India-incorporated entities with Rs. 2 Crore net worth qualify.
+
+  Rule 6      : Reasonable security safeguards — AES-256 encryption, MFA,
+                role-based access, audit logging (minimum 1 year retention).
+
+Consent notice must include:
+  - What data is collected (name, mobile, address, health history, etc.)
+  - Why it is collected (treatment, insurance, research — each purpose separate)
+  - Who it will be shared with (labs, insurance TPAs, government portals)
+  - How patient can withdraw consent
+  - How patient can access or correct their data
+
+
+================================================================================
+5. CORE CONCEPTS & DEFINITIONS
+================================================================================
+
+Data Fiduciary     : The hospital. They decide WHY and HOW patient data is used.
+                     They own the legal liability for patient data.
+
+Data Processor     : Us (Consent Manager). We process consent records on behalf
+                     of hospitals. We do NOT process clinical data.
+
+Data Principal     : The patient. The person whose data is being collected.
+
+Consent Artifact   : A cryptographic record proving consent was given.
+                     Contains: patient key, hospital ID, purpose, timestamp,
+                     SHA-256 hash of all fields. Immutable once written.
+
+Consent Vault      : Our encrypted, append-only database storing consent artifacts.
+                     Rows can never be updated or deleted. Only new rows added.
+
+Patient Key        : HMAC-SHA256(patient mobile + system salt). We NEVER store
+                     the raw mobile number. The hash is consistent across hospitals
+                     so we can recognize returning patients without storing PII.
+
+Audit Log          : Append-only log of every API call — consent checks, data
+                     access events, emergency overrides, withdrawals. Legal evidence.
+
+HIP                : Health Information Provider (ABDM term) — hospital that
+                     generated records. Relevant in Step 2.
+
+HIU                : Health Information User (ABDM term) — hospital requesting
+                     to view another hospital's records. Relevant in Step 2.
+
+DPO                : Data Protection Officer. Each hospital must appoint one.
+                     They use our DPO dashboard to manage hospital compliance.
+
+DPBI               : Data Protection Board of India. The government enforcement
+                     body. They receive breach reports and investigate violations.
+
+Bypass Event       : When a doctor accesses patient data in HMS without first
+                     calling our consent check API. Detected by cross-referencing
+                     HMS access logs with our consent check logs.
+
+
+================================================================================
+6. SYSTEM ARCHITECTURE
+================================================================================
+
+HIGH-LEVEL LAYERS:
+
+  [Patient Touchpoints]
+    - OPD tablet kiosk (Android app — offline capable)
+    - SMS/WhatsApp consent link (for post-visit consent)
+    - Patient self-service web portal
+
+  [API Gateway]
+    - Rate limiting (per hospital API key)
+    - JWT authentication
+    - mTLS for HMS webhooks
+    - Request/response logging
+
+  [Core Services — Go microservices]
+    - consent-service    : capture, check, store consent
+    - audit-service      : append-only event logging
+    - withdrawal-service : process consent withdrawals
+    - emergency-service  : Section 7(b) emergency overrides
+    - notification-service: OTP, WhatsApp, SMS, email
+    - report-service     : compliance reports, breach reports
+    - auth-service       : JWT, API keys, RBAC
+    - integration-service: HMS webhook adapters
+
+  [Data Layer]
+    - PostgreSQL (consent vault — append-only table with RLS)
+    - PostgreSQL (audit log — append-only, RLS blocks UPDATE/DELETE)
+    - Redis (session cache, OTP store, job queue)
+    - AWS S3 India (consent PDFs)
+    - AWS RDS Mumbai (ap-south-1 ONLY — data localization)
+
+  [External Integrations]
+    - Hospital HMS (Bahmni, eHospital, Practo, MocDoc — via webhooks/REST)
+    - MSG91 / Exotel (SMS OTP)
+    - WhatsApp Business API (consent notifications)
+    - AWS SES (email notifications)
+    - Razorpay (hospital billing)
+
+CRITICAL ARCHITECTURE RULES:
+  1. All AWS resources must be in ap-south-1 (Mumbai) — data localization
+  2. Every database table must have hospital_id column (multi-tenancy)
+  3. Patient mobile is NEVER stored — only HMAC-SHA256 hash
+  4. Audit log table: PostgreSQL RLS blocks UPDATE and DELETE at DB level
+  5. Consent vault: append-only — no update, no delete ever
+  6. All API calls must be HTTPS TLS 1.3 minimum
+  7. Emergency access always returns allowed:true — never block emergency
+
+
+================================================================================
+7. DETAILED FLOW — PATIENT AT HOSPITAL A (NEW PATIENT)
+================================================================================
+
+Step 1: Patient arrives at OPD
+  - Patient walks in, gives name and mobile to front desk
+  - Front desk uses their existing HMS normally — zero change in workflow
+
+Step 2: HMS registers patient
+  - HMS creates patient record with local ID (e.g., PA-00234)
+  - HMS fires webhook to our API:
+    POST https://api.consentmanager.in/webhook/patient-registered
+    Headers: X-Hospital-API-Key: <hospital_api_key>, X-Signature: HMAC of body
+    Body: {
+      "patientId": "PA-00234",
+      "mobile": "9820XXXXXX",
+      "hospitalId": "H-MUMBAI-001",
+      "timestamp": "2026-04-12T09:30:00Z"
+    }
+
+  NOTE: If HMS does not support webhooks (e.g., older systems), the tablet
+  kiosk can accept direct patient mobile input — no webhook needed.
+
+Step 3: Our system checks if patient exists
+  - Hash the mobile: patientKey = HMAC_SHA256(mobile + SYSTEM_SALT)
+    NOTE: Use a single system-level salt (stored in AWS Secrets Manager),
+    NOT a per-hospital salt. This allows cross-hospital patient recognition.
+  - Query consent vault: SELECT * FROM patients WHERE key = ? AND deleted = false
+  - Result A — New patient: proceed to Step 4
+  - Result B — Returning patient (visited another hospital before): proceed to
+    Step 4 but pre-fill known language preference, show shorter consent form
+
+Step 4: Tablet kiosk shows DPDP consent form
+  - Tablet at OPD desk displays consent form in patient's preferred language
+    (English, Hindi, Marathi, Kannada — auto-detected or selectable)
+  - Form shows SEPARATE checkboxes for each purpose:
+    [ ] Treatment — collect name, contact, medical history for your care
+    [ ] Insurance — share relevant records with your TPA/insurer (optional)
+    [ ] Research  — use anonymised data for medical research (optional)
+  - Form includes:
+    - Who will see the data (list of departments, labs, insurers)
+    - How to withdraw consent later (SMS to XXXXX or login to portal)
+    - Data retention period (as per hospital policy)
+  - OTP is sent to patient's mobile for identity verification
+  - Patient enters OTP to confirm their identity and consent choices
+
+  NOTE: Patient can consent to treatment ONLY and decline insurance/research.
+  Treatment consent is mandatory for receiving care. All others are optional.
+
+Step 5: Patient confirms consent via OTP
+  - OTP verified (5-minute expiry, 3-attempt limit)
+  - If OTP fails 3 times: flag for front desk to manually verify identity,
+    create a manual consent record with front desk staff ID
+  - On success: consent artifact is created
+
+Step 6: Consent artifact created and stored
+  Consent record written to vault:
+  {
+    id:           UUID v4
+    patient_key:  HMAC_SHA256(mobile + SYSTEM_SALT)
+    hospital_id:  "H-MUMBAI-001"
+    purposes:     ["treatment", "insurance"]
+    language:     "marathi"
+    otp_verified: true
+    timestamp:    "2026-04-12T09:34:00Z"
+    ip_address:   tablet IP (for audit)
+    status:       "ACTIVE"
+    hash:         SHA256(patient_key + hospital_id + purposes + timestamp)
+    version:      1
+  }
+  - Record is IMMUTABLE. Never updated. New version created on any change.
+  - Consent status pushed back to HMS:
+    POST https://hms-hospital-a.com/webhooks/consent-status
+    Body: { "patientId": "PA-00234", "consentStatus": "ACTIVE", "purposes": [...] }
+  - Doctor's HMS screen shows green consent badge next to patient name
+  - Audit log entry written: CONSENT_GRANTED event
+  - Patient receives SMS confirmation of what they consented to
+
+Step 7: Doctor sees patient (normal HMS flow — nothing changes for doctor)
+  - Doctor opens patient record in their HMS
+  - HMS calls our consent check API before rendering sensitive data:
+    GET /v1/consent/check?patientId=PA-00234&hospitalId=H-MUMBAI-001&purpose=treatment
+    Response: { "allowed": true, "purposes": ["treatment"], "expiresAt": null }
+  - If allowed: patient data displayed normally in HMS
+  - If not allowed: HMS shows consent warning banner (our embedded JS widget)
+
+
+================================================================================
+8. DETAILED FLOW — PATIENT AT HOSPITAL B (RETURNING PATIENT)
+================================================================================
+
+IMPORTANT CORRECTION: Two separate consent events are required at Hospital B.
+Hospital B is a different Data Fiduciary under DPDP — they need their own
+consent to collect THIS patient's data. The ABHA ID (Step 2) is not recreated
+but new DPDP consent IS created for Hospital B.
+
+Step 1: Patient arrives at Hospital B OPD
+  - Same patient who visited Hospital A. Gives mobile at front desk.
+
+Step 2: Hospital B HMS registers patient, fires webhook
+  POST /webhook/patient-registered
+  Body: { "patientId": "PB-00891", "mobile": "9820XXXXXX", "hospitalId": "H-MUMBAI-002" }
+
+Step 3: Our system recognises returning patient
+  - Same mobile hash found in our vault
+  - patient_key matches existing record from Hospital A
+  - Consent vault shows ACTIVE consent for Hospital A, no consent for Hospital B
+
+Step 4: New DPDP consent captured for Hospital B
+  - Tablet shows shorter form (patient already verified identity once)
+  - Hospital B is listed as the Data Fiduciary
+  - Patient confirms consent for Hospital B's data collection
+  - New consent artifact created:
+    { patient_key: SAME hash, hospital_id: "H-MUMBAI-002", status: "ACTIVE", ... }
+  - This is a completely separate legal record from Hospital A's consent
+
+Step 5: [STEP 2 ONLY — ABDM record sharing]
+  - Once patient has ABHA ID (from Step 2 roadmap), Hospital B can request
+    records from Hospital A through ABDM's M2 consent flow.
+  - This is a THIRD consent event — separate from both DPDP consents above.
+  - Patient approves via PHR app or kiosk: "Allow Hospital B to see
+    your OPD records from Hospital A?"
+  - This is handled entirely by ABDM — out of scope for Step 1.
+
+
+================================================================================
+9. DETAILED FLOW — DOCTOR ACCESS
+================================================================================
+
+Step 1: Doctor logs into their existing HMS
+  - No change in HMS login. Doctor uses their normal credentials.
+
+Step 2: Doctor opens a patient record
+  - HMS sends a consent check to our API:
+    GET /v1/consent/check
+    Headers: X-Hospital-API-Key, X-Staff-ID: DR-123
+    Query: patientId=PA-00234, hospitalId=H-MUMBAI-001, purpose=treatment
+  - Our system checks: active consent exists for this patient + hospital + purpose?
+  - Response A (consent exists): { "allowed": true, "consentId": "uuid-xxx" }
+    HMS displays patient data. Audit log: DATA_ACCESSED event with doctor ID.
+  - Response B (no consent): { "allowed": false, "reason": "no_consent" }
+    HMS shows embedded widget warning: "Consent not yet captured for this patient.
+    Please ask patient to complete consent at the front desk."
+    Audit log: CONSENT_MISSING_ACCESS_ATTEMPT with doctor ID and timestamp.
+
+  NOTE: Our system returns a status. The HMS decides whether to display data.
+  For deep integration (embedded widget), our JS snippet visually gates the data.
+  For shallow integration (webhook only), the HMS must respect our response.
+
+Step 3: Doctor accesses data — logged
+  - Every successful consent check is written to audit log.
+  - Doctor ID, patient key (hashed), purpose, timestamp all recorded.
+  - This audit trail is what the hospital presents to DPBI if investigated.
+
+Step 4: Bypass detection (background process)
+  - Monthly job compares: HMS access events vs. consent check API calls.
+  - If HMS reports 847 patient record opens but only 612 consent checks were made:
+    → 235 bypass events detected
+    → Automated report sent to hospital DPO and admin
+    → Logged in our system as BYPASS_DETECTED events
+
+
+================================================================================
+10. DETAILED FLOW — EMERGENCY ACCESS
+================================================================================
+
+IMPORTANT CORRECTION TO ORIGINAL PLAN:
+The original plan said "first time comer to hospital — no need for OTP
+verification." This is INCORRECT and legally dangerous.
+
+Under DPDP Section 7(b), emergency access is permitted as "deemed consent"
+but it is NOT a blank bypass. The following rules apply:
+
+  Rule 1: Every emergency access must be LOGGED with doctor ID, reason, and
+          timestamp. There is no such thing as uncaptured emergency access.
+
+  Rule 2: "First time patient in emergency" does NOT skip consent entirely.
+          Emergency flag + deemed consent record is created immediately.
+
+  Rule 3: After the patient is stabilised, retrospective DPDP consent must
+          be obtained AND the patient must be notified what data was accessed.
+
+  Rule 4: Repeated emergency overrides by the same doctor are flagged in
+          the DPO dashboard as potential misuse.
+
+Emergency Flow:
+
+Step 1: Patient arrives in emergency
+  - Could be unconscious, unable to communicate, or critical condition
+  - Doctor or nurse initiates emergency access in HMS or kiosk
+
+Step 2: Emergency override button pressed
+  - Doctor must fill mandatory fields (cannot be skipped):
+    - Staff ID (auto-populated from HMS login)
+    - Emergency reason dropdown:
+        [ ] Unconscious / unresponsive
+        [ ] Life-threatening condition
+        [ ] Unable to obtain consent (minor, incapacitated)
+    - Brief clinical note (free text, max 200 chars)
+
+Step 3: Our API is called
+  POST /v1/consent/emergency-override
+  Body: {
+    "patientMobile": "9820XXXXXX" (if known) OR "patientId": "PA-00234",
+    "hospitalId": "H-MUMBAI-001",
+    "doctorId": "DR-456",
+    "reason": "unconscious",
+    "clinicalNote": "RTA patient, trauma bay",
+    "timestamp": "2026-04-12T03:14:00Z"
+  }
+
+  Response: ALWAYS { "allowed": true, "emergencyId": "EMRG-2026-0042" }
+  Response time must be < 300ms. We NEVER block emergency access.
+
+Step 4: Emergency consent record created
+  {
+    type:             "EMERGENCY_OVERRIDE"
+    patient_key:      HMAC_SHA256(mobile) if known, else null
+    hospital_id:      "H-MUMBAI-001"
+    doctor_id:        "DR-456"
+    legal_basis:      "DPDP_SECTION_7B"
+    reason:           "unconscious"
+    clinical_note:    "RTA patient, trauma bay"
+    status:           "PENDING_DPO_REVIEW"
+    dpo_review_deadline: timestamp + 72 hours
+    timestamp:        current time
+  }
+  Audit log entry: EMERGENCY_ACCESS event
+
+Step 5: DPO review required within 72 hours
+  - DPO dashboard shows a red alert: "Emergency access pending review"
+  - DPO must mark as: VERIFIED_EMERGENCY or REQUIRES_INVESTIGATION
+  - If unreviewed after 72 hours: auto-escalation notification to hospital admin
+  - If marked REQUIRES_INVESTIGATION: flagged for possible DPBI reporting
+
+Step 6: Patient retrospective notification (when stable)
+  - Once patient is contactable, automated SMS/WhatsApp sent:
+    "Your records at [Hospital A] were accessed on [date] under emergency
+    conditions by Dr. [name]. Reason: [clinical reason]. For queries contact
+    [hospital helpline] or visit [our patient portal]."
+  - Patient is invited to formally consent or raise a grievance
+
+Step 7: Formal consent update
+  - If patient confirms they consent: emergency record updated to ACTIVE
+  - If patient disagrees: DPO is alerted, hospital must address grievance
+  - All of this is logged immutably in the audit trail
+
+
+================================================================================
+11. DETAILED FLOW — CONSENT WITHDRAWAL
+================================================================================
+
+Patient can withdraw consent at any time. This must work via:
+  a) Patient portal (web login)
+  b) SMS command to a dedicated number
+  c) WhatsApp message
+  d) Front desk request at the hospital
+
+Step 1: Patient initiates withdrawal
+  - Example: Patient SMS to 9XXXXXXXXX: "WITHDRAW H-MUMBAI-001"
+  - Or: Patient logs into portal, clicks "Withdraw" for Hospital A
+
+Step 2: Identity verification
+  - OTP sent to patient mobile to verify identity before withdrawal
+  - On OTP confirmation: withdrawal processed
+
+Step 3: Withdrawal record written
+  - New consent record written (NOT updating old record — append only):
+    {
+      type:          "WITHDRAWAL"
+      patient_key:   same HMAC hash
+      hospital_id:   "H-MUMBAI-001"
+      purposes:      ["insurance"]  -- can withdraw specific purposes only
+      timestamp:     current time
+      status:        "WITHDRAWN"
+      previous_id:   UUID of original consent record
+    }
+  - Original consent record remains intact (immutable — legal record of original consent)
+
+Step 4: Propagate to HMS
+  - Webhook sent to Hospital A HMS:
+    POST /webhooks/consent-status
+    Body: { "patientId": "PA-00234", "consentStatus": "WITHDRAWN",
+            "purposes": ["insurance"], "effectiveFrom": timestamp }
+  - HMS updates patient record to reflect withdrawal
+  - Doctor's screen now shows yellow warning: "Insurance consent withdrawn"
+
+Step 5: Confirm to patient
+  - SMS confirmation: "Your consent for insurance data sharing at Hospital A
+    has been withdrawn. Treatment consent remains active."
+
+IMPORTANT:
+  - Withdrawal of insurance consent does NOT affect treatment consent
+  - Hospital can no longer share data with TPAs for this patient
+  - Existing clinical records are NOT deleted — only future data sharing is stopped
+  - Patient can re-consent at any time by visiting front desk or patient portal
+
+
+================================================================================
+12. DETAILED FLOW — DATA BREACH NOTIFICATION
+================================================================================
+
+Under DPDP Rules 2025, data breaches must be reported to DPBI.
+Our software assists hospitals in meeting the 72-hour notification deadline.
+
+Step 1: Breach detected
+  - Could be: our system detecting unusual access patterns, hospital IT
+    reporting a breach, or automated monitoring alerts
+  - Any hospital admin, DPO, or our system can initiate a breach report
+
+Step 2: Breach triage
+  - Hospital DPO logs the breach in our dashboard:
+    - Date/time breach detected
+    - Nature of breach (unauthorised access / data theft / accidental exposure)
+    - Estimated number of patients affected
+    - Data categories involved (contact info / health records / financial)
+    - Immediate containment actions taken
+
+Step 3: 72-hour countdown starts
+  - Our system shows a countdown timer to DPBI notification deadline
+  - Automated reminders to DPO at 24h, 48h, 60h marks
+  - System auto-generates draft DPBI notification report
+
+Step 4: DPBI notification
+  - Our system generates the required breach notification format
+  - DPO reviews and submits to DPBI (via DPBI portal — external)
+  - Our system logs that notification was sent, to whom, when
+
+Step 5: Patient notification
+  - After DPBI notification, affected patients must be notified
+  - Our system can send bulk SMS/WhatsApp to affected patient keys
+    (patients identified from consent vault — no raw PII needed)
+
+Step 6: Post-breach audit
+  - All breach-related actions logged immutably
+  - Breach record + DPBI submission + patient notification all linked
+  - Available for DPBI investigation if requested
+
+
+================================================================================
+13. USER ROLES & PORTALS
+================================================================================
+
+ROLE 1 — HOSPITAL ADMIN
+  Access level: Full access to their hospital's data only (multi-tenancy)
+  Dashboard features:
+  - Total consents captured this month / year
+  - Consent coverage % (patients with active consent / total patients)
+  - Bypass event count (accesses without consent check)
+  - Pending DPO reviews
+  - Monthly compliance report (PDF download)
+  - Audit trail: search by date, doctor, patient key
+  - Breach management: initiate, track, report breaches
+  - Staff management: add/remove doctors and staff with access roles
+
+ROLE 2 — HOSPITAL DPO (Data Protection Officer)
+  Access level: Same as admin + DPO-specific tools
+  NOTE: This is the HOSPITAL'S internal DPO — not a government officer.
+  The DPO is appointed by the hospital to manage their DPDP compliance.
+  Dashboard features:
+  - All admin features above
+  - Emergency access review queue (must review within 72 hours)
+  - Compliance health score with specific gap items
+  - DPBI breach notification workflow
+  - Grievance management (patient complaints)
+  - Data deletion/correction request management
+  - Monthly compliance certificate download (for NABH, insurance audits)
+
+ROLE 3 — DOCTOR / CLINICAL STAFF
+  Access level: Read-only consent status for their patients only
+  Interface: Embedded widget inside HMS (not a separate login)
+  Features:
+  - Green badge: consent active for this patient
+  - Yellow badge: partial consent (e.g., treatment only, not insurance)
+  - Red badge: no consent / consent withdrawn
+  - Emergency override button (with mandatory reason fields)
+  - Patient consent details popup (what purposes are consented)
+
+ROLE 4 — PATIENT
+  Access level: Their own consent records only (cross-hospital view)
+  Authentication: Mobile OTP login (no username/password required)
+  Portal features:
+  - View all hospitals where consent is active
+  - View exactly what data each hospital is consented to collect
+  - View what purposes are consented (treatment / insurance / research)
+  - Withdraw consent per hospital, per purpose independently
+  - Download full consent history as PDF
+  - Submit correction request (request hospital to fix wrong data)
+  - Submit data deletion request (right to erasure)
+  - View audit trail: when was your data accessed, by which hospital
+  - Grievance submission
+
+  CORRECTION NOTE (from original plan):
+  DPO page is NOT for "government officer compliance check." The DPO role
+  is an internal hospital appointment. Government oversight is done by DPBI
+  via their own portal. Our software supports DPBI investigations by
+  generating audit exports on request — we do not give DPBI direct portal access.
+
+ROLE 5 — SUPER ADMIN (Our Internal Team)
+  Access level: System-level, no access to hospital patient data
+  Features:
+  - Hospital onboarding and API key management
+  - Billing and subscription management
+  - System health monitoring
+  - Cross-hospital aggregate statistics (anonymised)
+
+
+================================================================================
+14. API ENDPOINTS
+================================================================================
+
+BASE URL: https://api.consentmanager.in/v1
+AUTH: Bearer JWT (hospital) or API Key (HMS integrations)
+
+CONSENT ENDPOINTS:
+  POST   /webhook/patient-registered       Receive patient registration from HMS
+  POST   /consent/capture                  Capture new consent (from kiosk)
+  GET    /consent/check                    Gate check before HMS data access
+  GET    /consent/:patientKey              Get all consents for a patient (hashed)
+  POST   /consent/withdraw                 Process consent withdrawal
+  GET    /consent/status/:hospitalId       Get consent stats for hospital
+
+EMERGENCY ENDPOINTS:
+  POST   /consent/emergency-override       Initiate emergency access
+  GET    /emergency/pending                List pending DPO reviews
+  POST   /emergency/:id/review             DPO marks emergency as verified/flagged
+
+OTP ENDPOINTS:
+  POST   /otp/send                         Send OTP to patient mobile
+  POST   /otp/verify                       Verify OTP, return session token
+
+AUDIT ENDPOINTS:
+  GET    /audit/logs                       Paginated audit log (hospital-scoped)
+  GET    /audit/bypass-events              Cross-reference report
+  GET    /audit/export                     Full audit export (PDF/CSV) for DPBI
+
+PATIENT PORTAL ENDPOINTS:
+  POST   /patient/login                    OTP-based patient login
+  GET    /patient/consents                 All consents for logged-in patient
+  POST   /patient/withdraw                 Patient self-service withdrawal
+  POST   /patient/correction-request       Request data correction
+  POST   /patient/deletion-request         Request data deletion (right to erasure)
+
+REPORT ENDPOINTS:
+  GET    /reports/compliance               Monthly compliance report
+  GET    /reports/coverage                 Consent coverage percentage
+  POST   /breach/report                    Initiate breach notification workflow
+
+HMS INTEGRATION ENDPOINTS:
+  POST   /integrations/register            Register HMS webhook URLs
+  GET    /integrations/status              Check integration health
+  POST   /integrations/test                Send test webhook to verify setup
+
+
+================================================================================
+15. DATA MODELS
+================================================================================
+
+TABLE: hospitals (one row per hospital)
+  id              UUID PRIMARY KEY
+  name            VARCHAR
+  address         TEXT
+  city            VARCHAR
+  api_key         VARCHAR UNIQUE (hashed)
+  webhook_url     VARCHAR
+  hms_type        ENUM (bahmni, ehospital, practo, mocdoc, generic)
+  plan_tier       ENUM (starter, growth, enterprise)
+  dpo_name        VARCHAR
+  dpo_email       VARCHAR
+  created_at      TIMESTAMP
+  active          BOOLEAN
+
+TABLE: consent_vault (APPEND ONLY — no UPDATE or DELETE ever)
+  id              UUID PRIMARY KEY
+  hospital_id     UUID FK → hospitals (multi-tenancy)
+  patient_key     VARCHAR(64) -- HMAC-SHA256 hash, never raw mobile
+  hms_patient_id  VARCHAR -- Hospital's own patient ID (PA-00234)
+  type            ENUM (CONSENT_GIVEN, WITHDRAWAL, EMERGENCY_OVERRIDE, RETROSPECTIVE)
+  purposes        JSONB -- ["treatment", "insurance", "research"]
+  status          ENUM (ACTIVE, WITHDRAWN, EXPIRED, PENDING_RETROSPECTIVE)
+  legal_basis     ENUM (EXPLICIT_CONSENT, DPDP_SECTION_7B)
+  otp_verified    BOOLEAN
+  language        VARCHAR(10)
+  version         INTEGER -- increments on each new record for same patient+hospital
+  previous_id     UUID FK → consent_vault (links to previous version)
+  hash            VARCHAR(64) -- SHA-256 of all above fields
+  created_at      TIMESTAMP -- immutable
+  -- Emergency fields (null for non-emergency)
+  doctor_id       VARCHAR
+  emergency_reason VARCHAR
+  clinical_note   TEXT
+  dpo_review_status ENUM (PENDING, VERIFIED, FLAGGED)
+  dpo_review_by   UUID
+  dpo_review_at   TIMESTAMP
+  -- Patient notification
+  patient_notified_at TIMESTAMP
+
+TABLE: audit_log (APPEND ONLY — PostgreSQL RLS blocks UPDATE/DELETE)
+  id              BIGSERIAL PRIMARY KEY
+  hospital_id     UUID FK → hospitals
+  event_type      ENUM (CONSENT_GRANTED, DATA_ACCESSED, EMERGENCY_ACCESS,
+                        CONSENT_WITHDRAWN, BYPASS_DETECTED, BREACH_REPORTED,
+                        CONSENT_MISSING_ACCESS_ATTEMPT, OTP_FAILED, ...)
+  patient_key     VARCHAR(64) -- hashed
+  actor_id        VARCHAR -- doctor ID, admin ID, or "PATIENT"
+  actor_type      ENUM (DOCTOR, ADMIN, DPO, PATIENT, SYSTEM)
+  consent_id      UUID FK → consent_vault (nullable)
+  ip_address      INET
+  user_agent      VARCHAR
+  details         JSONB -- event-specific extra data
+  created_at      TIMESTAMP -- immutable
+
+TABLE: otp_sessions (short-lived, auto-purged after 5 minutes)
+  id              UUID PRIMARY KEY
+  mobile_hash     VARCHAR(64)
+  otp_hash        VARCHAR(64) -- bcrypt hash of OTP
+  attempts        INTEGER DEFAULT 0
+  expires_at      TIMESTAMP
+  used            BOOLEAN DEFAULT false
+
+TABLE: patient_requests (correction/deletion requests)
+  id              UUID PRIMARY KEY
+  hospital_id     UUID FK
+  patient_key     VARCHAR(64)
+  type            ENUM (CORRECTION, DELETION, ACCESS)
+  description     TEXT
+  status          ENUM (PENDING, IN_PROGRESS, RESOLVED, REJECTED)
+  submitted_at    TIMESTAMP
+  resolved_at     TIMESTAMP
+  resolution_note TEXT
+
+TABLE: breach_records
+  id              UUID PRIMARY KEY
+  hospital_id     UUID FK
+  detected_at     TIMESTAMP
+  reported_at     TIMESTAMP
+  breach_type     VARCHAR
+  affected_count  INTEGER
+  data_categories JSONB
+  dpbi_submitted_at TIMESTAMP
+  dpbi_reference  VARCHAR
+  patients_notified_at TIMESTAMP
+  status          ENUM (DETECTED, TRIAGED, DPBI_NOTIFIED, CLOSED)
+
+
+================================================================================
+16. TECHNOLOGY STACK
+================================================================================
+
+BACKEND:
+  Language:       Go (Golang) 1.22+
+  HTTP Framework: Gin (gin-gonic/gin)
+  ORM:            GORM (gorm.io) for standard tables
+  Raw SQL:        sqlx (jmoiron/sqlx) for audit log — explicit control
+  JWT:            golang-jwt/jwt (RS256 asymmetric signing)
+  Redis:          go-redis/redis v9
+  Crypto:         crypto/sha256, crypto/rand, crypto/hmac (stdlib — no deps)
+  Logging:        uber-go/zap (structured JSON logs)
+  Config:         spf13/viper + AWS Secrets Manager
+  HTTP Client:    go-resty/resty (outbound HMS calls)
+  PDF:            go-wkhtmltopdf (consent PDFs, reports)
+  Testing:        stretchr/testify + golang/mock (80%+ coverage required)
+  AWS SDK:        aws-sdk-go-v2
+
+FRONTEND — ADMIN/DPO DASHBOARD:
+  Framework:      React 18 + TypeScript
+  Components:     shadcn/ui
+  Charts:         Recharts
+  Tables:         TanStack Table (virtual scroll for large audit logs)
+  Data Fetching:  TanStack Query
+  State:          Zustand
+
+FRONTEND — TABLET KIOSK:
+  Framework:      React Native (Expo)
+  Forms:          react-hook-form
+  Languages:      i18next (English, Hindi, Marathi, Kannada)
+  Offline:        WatermelonDB (SQLite) — queue consent locally, sync on reconnect
+  CRITICAL: Hospital internet is unreliable. Offline mode is mandatory.
+
+FRONTEND — HMS EMBEDDED WIDGET:
+  Type:           Vanilla JS bundle (single script tag drop-in)
+  Communication:  PostMessage API to parent HMS window
+  Size:           Must be under 50KB gzipped
+
+INFRASTRUCTURE:
+  Cloud:          AWS ap-south-1 (Mumbai) — DATA LOCALIZATION MANDATORY
+  Database:       AWS RDS PostgreSQL 16
+  Cache:          AWS ElastiCache Redis
+  Storage:        AWS S3 (India region)
+  Compute:        AWS ECS Fargate (containerised Go services)
+  CDN:            AWS CloudFront (India edge only)
+  Secrets:        AWS Secrets Manager (NO environment variable secrets)
+  Monitoring:     AWS CloudWatch + Datadog
+  CI/CD:          GitHub Actions → ECR → ECS
+
+
+================================================================================
+17. SECURITY REQUIREMENTS
+================================================================================
+
+DATA PROTECTION:
+  - AES-256 encryption at rest (AWS RDS + S3 server-side encryption)
+  - TLS 1.3 for all data in transit
+  - Field-level encryption for patient_key column (extra layer)
+  - HMAC-SHA256 for patient identity — raw mobile NEVER stored anywhere
+
+ACCESS CONTROL:
+  - JWT RS256 (asymmetric) — each service can verify without sharing secret
+  - Role-based access per hospital (multi-tenancy)
+  - Rate limiting: per hospital API key, per endpoint
+  - mTLS for HMS-to-our-system webhooks
+
+AUDIT & COMPLIANCE:
+  - PostgreSQL Row-Level Security blocks UPDATE/DELETE on audit_log table
+  - All API calls logged (request ID, actor, timestamp, outcome)
+  - Log retention minimum: 7 years (DPDP legal requirement)
+  - Automated backup: daily snapshots, 30-day retention, cross-AZ
+
+TESTING:
+  - Penetration test required before production launch
+  - OWASP Top 10 coverage
+  - ABDM security requirements (relevant for Step 2)
+  - Tenant isolation tests: verify Hospital A cannot access Hospital B data
+    (Run these tests on every release — tenant leakage is existential risk)
+
+INCIDENT RESPONSE:
+  - Breach detection: CloudWatch anomaly detection on access patterns
+  - Alert pipeline: CloudWatch → SNS → PagerDuty → On-call engineer
+  - Runbook: documented steps for breach containment and DPBI notification
+
+
+================================================================================
+18. BUILD ROADMAP
+================================================================================
+
+PHASE 1 — FOUNDATION (Month 1–2)
+  Goals: Core data model + consent engine working
+  Deliverables:
+    - PostgreSQL schema with multi-tenancy and RLS
+    - consent-service: POST /consent/capture, GET /consent/check
+    - audit-service: append-only event logger
+    - auth-service: JWT issue + API key management
+    - OTP service: send + verify via MSG91
+    - Basic React dashboard (admin view only)
+    - Tablet kiosk app (React Native) — online mode first
+  Definition of Done: Consent can be captured and checked via API
+
+PHASE 2 — INTEGRATIONS & KIOSK (Month 3–4)
+  Goals: Connect to real HMS systems, tablet works offline
+  Deliverables:
+    - Generic webhook receiver (works with any HMS)
+    - Bahmni adapter
+    - eHospital adapter
+    - Offline-first tablet kiosk (WatermelonDB sync)
+    - Embedded JS widget (consent badge in HMS screen)
+    - WhatsApp Business API integration (consent notifications)
+    - Consent withdrawal flow (patient-initiated)
+    - Emergency override service (Section 7(b) flow)
+  Definition of Done: End-to-end flow works with Bahmni test instance
+
+PHASE 3 — PILOT (Month 5–6)
+  Goals: 3 free pilot hospitals live, real patient data
+  Deliverables:
+    - Onboard 3 hospitals from doctor network (free 60-day pilot)
+    - Multilingual consent forms (Hindi, Marathi, Kannada)
+    - DPO dashboard (emergency review, compliance health score)
+    - Patient portal (view + withdraw consent)
+    - Bypass detection monthly report
+    - Consent PDF generation
+    - Bug fixes from real-world usage
+  Definition of Done: 3 hospitals live with real patients, consent data flowing
+
+PHASE 4 — REVENUE (Month 7–9)
+  Goals: Convert pilots to paid, close 10 paying hospitals
+  Deliverables:
+    - Self-serve onboarding (hospital signs up, integrates in 1 day)
+    - Razorpay billing integration (monthly/annual plans)
+    - Breach notification workflow (72-hour DPBI reporting)
+    - Data deletion/correction request management
+    - Comprehensive compliance reports (monthly PDF)
+    - Practo/Insta HMS adapter (priority based on pilot HMS feedback)
+  Definition of Done: Rs. 15–25 Lakh ARR
+
+PHASE 5 — SCALE (Month 9–18)
+  Goals: 50+ hospitals, IMA/NATHEALTH endorsement, DPDP CM registration
+  Deliverables:
+    - DPDP Consent Manager registration (opens November 2026)
+    - HMS vendor white-label partnership (MocDoc or eHospital)
+    - ABDM sandbox integration begins (Step 2 starts)
+    - SOC 2 Type II compliance audit
+    - Mobile app for patient portal
+
+
+================================================================================
+19. CORRECTIONS TO ORIGINAL PLAN
+================================================================================
+
+This section documents corrections from the original plan.txt to avoid confusion
+during development.
+
+CORRECTION 1 — Patient Key / Unique ID
+  Original: "our software registers user and creates a unique ID"
+  Corrected: We do NOT create a patient ID. The HMS creates the patient ID.
+  We create a CONSENT RECORD with a HMAC-SHA256 hashed mobile as the patient key.
+  We never store the raw mobile number.
+
+CORRECTION 2 — HMAC Salt Scope
+  Original: "HMAC_SHA256(mobile + hospitalSalt)"
+  Corrected: Use HMAC_SHA256(mobile + SYSTEM_SALT) with a SINGLE system-level
+  salt (stored in AWS Secrets Manager). If you use per-hospital salt, the same
+  patient visiting two hospitals gets two different hashes — you cannot
+  recognise them as the same person. System salt solves cross-hospital matching.
+
+CORRECTION 3 — Records stored in ABDM
+  Original: "records stored in ABDM for record sharing"
+  Corrected: Clinical records are NEVER stored in ABDM. Records stay in the
+  hospital's HMS. ABDM stores only a reference (care context pointer).
+  The actual FHIR data is fetched from the HMS on demand when consent is given.
+  This is a Step 2 concern — not relevant for Step 1.
+
+CORRECTION 4 — Hospital B — No new profile
+  Original: "no new profile is created in our software as patient is already registered"
+  Corrected: No new ABHA ID is created (that is correct). But a NEW DPDP
+  consent record IS created for Hospital B. Hospital B is a separate Data
+  Fiduciary — they need their own consent to collect this patient's data.
+  Our system recognises the same patient (same mobile hash) but creates a
+  new consent record scoped to Hospital B.
+
+CORRECTION 5 — Emergency flow for first-time patient
+  Original: "If first time comer to hospital no need for OTP verification"
+  Corrected: This is legally wrong and creates liability. Under DPDP Section 7(b),
+  emergency access is permitted as "deemed consent" but MUST be logged with
+  doctor ID, reason, and clinical note. There is no concept of "no need for
+  verification" — instead, verification is deferred but EVERY emergency access
+  creates an audit record. Doctor ID, reason, and timestamp are mandatory.
+
+CORRECTION 6 — DPO page is not for government officer
+  Original: "DPO page — for compliance check from the govt officer"
+  Corrected: The DPO (Data Protection Officer) is an internal hospital
+  appointee. The government body is DPBI (Data Protection Board of India)
+  which operates externally. Our DPO portal is for the hospital's own DPO
+  to manage internal compliance. DPBI investigators do not login to our system —
+  we provide audit exports when legally requested.
+
+CORRECTION 7 — Doctor access flow
+  Original: "data will not be visible" if no consent
+  Clarified: Our system returns consent status (allowed: true/false). The HMS
+  decides what to display. For deep integrations (embedded widget), our JS
+  widget visually shows a warning. For shallow integrations, the HMS must
+  respect our API response. We cannot directly block HMS data rendering
+  unless the hospital chooses a deep integration model.
+
+
+================================================================================
+20. OPEN QUESTIONS / TO BE DECIDED
+================================================================================
+
+1. What HMS types are the first 3 pilot hospitals using?
+   (Determines which adapter to build first — Bahmni, eHospital, or generic)
+
+2. What happens if a patient refuses ALL consent including treatment?
+   (Hospital cannot refuse emergency care — but can refuse non-emergency
+   services. Legal advice needed on exact policy language.)
+
+3. Consent expiry — should consents expire after 1 year and require renewal?
+   (DPDP Rules do not specify a mandatory expiry period. We can let hospitals
+   configure this per their policy. Default recommendation: no expiry for
+   treatment consent, annual renewal for insurance/research.)
+
+4. Minor patients — who provides consent?
+   (Under DPDP, for patients under 18, a parent or legal guardian must consent.
+   How do we verify guardian identity at OPD? This needs a specific UI flow.)
+
+5. How do we handle patients without a mobile number?
+   (Some elderly patients may not have a mobile. We need a front desk override
+   flow where staff manually verify identity and sign on behalf.)
+
+6. What is our breach detection capability in V1?
+   (Manual breach reporting by hospital vs. automated anomaly detection.
+   Automated detection requires CloudWatch + ML — is this V1 or V2?)
+
+7. HMS vendor partnership — which vendor to approach first?
+   (MocDoc, eHospital, or Bahmni based on pilot hospital feedback.)
+
+8. Legal entity — when to incorporate and reach Rs. 2 Crore net worth
+   for DPDP Consent Manager registration in November 2026?
+
+
+================================================================================
+END OF DOCUMENT
+================================================================================
+Version: 1.0
+Last Updated: April 2026
+Next Review: After Phase 1 completion
+
+Note on images:
+The following diagrams should be added to this document:
+  - System architecture diagram (Layer diagram — touchpoints to data layer)
+  - Patient flow diagram — Hospital A (swimlane: patient / HMS / consent manager)
+  - Patient flow diagram — Hospital B
+  - Emergency access flowchart
+  - Data model ERD (entity relationship diagram)
+  - Roles and permissions matrix
+
+================================================================================

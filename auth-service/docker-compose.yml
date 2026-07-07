@@ -1,0 +1,36 @@
+# auth-service — standalone compose (polyrepo style).
+# Requires shared EXTERNAL infra (postgres + redis on the dpdp-network) — see
+# ../DOCKER.md for the one-time bootstrap. Run from this directory:
+#   docker compose up -d --build
+# Build context is the repo root (..) because go.mod uses `replace ../shared`.
+services:
+  auth-service:
+    container_name: dpdp-auth
+    build:
+      context: ..
+      dockerfile: auth-service/Dockerfile
+    environment:
+      AUTH_SERVICE_PORT: "9006"
+      DATABASE_URL: "postgres://dpdp_app:dpdp_app_local_dev_pw@postgres:5432/dpdp?sslmode=disable"
+      JWT_PRIVATE_KEY_PATH: /keys/auth_private.pem
+      JWT_PUBLIC_KEY_PATH: /keys/auth_public.pem
+      JWT_EXPIRY_HOURS: "24"
+      SERVICE_TOKEN_SECRET: ${SERVICE_TOKEN_SECRET:-LOCAL-INTERNAL-SERVICE-SECRET-DEV-ONLY}
+      SERVICE_TOKEN_EXPIRY_MINUTES: "10"
+    ports:
+      - "9006:9006"
+    volumes:
+      - ./keys:/keys:ro
+    restart: unless-stopped
+    networks:
+      - dpdp-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9006/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+networks:
+  dpdp-network:
+    external: true

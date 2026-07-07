@@ -1,0 +1,17 @@
+# Build context is the repo root. Each service Dockerfile only COPYs shared/ and
+# its own module, but this trims what the daemon has to transfer and keeps secrets
+# out of images.
+.git/
+**/bin/
+**/node_modules/
+
+# Docs / plans / binaries not needed to build
+*.pdf
+*.txt
+*.md
+*.html
+
+# Never bake secrets or local env into images (mounted at runtime instead)
+**/.env
+DPDP/secrets/
+auth-service/keys/

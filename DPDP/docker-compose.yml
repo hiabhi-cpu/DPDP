@@ -1,0 +1,108 @@
+# =============================================================================
+# DPDP Consent Manager — Docker Compose
+# Runs: PostgreSQL 16 + Redis 7
+# Usage:
+#   docker compose up -d        → start all services in background
+#   docker compose down         → stop and remove containers
+#   docker compose down -v      → stop and remove containers + volumes (wipes DB)
+#   docker compose logs -f      → follow logs
+#   docker compose logs -f redis → follow redis logs only
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — primary database for all services
+  # Each service gets its own schema within the 'dpdp' database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: dpdp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Locale settings for proper text handling
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=en_US.UTF-8"
+    ports:
+      # host:container — exposes postgres on localhost:5432
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Named volume persists data across container restarts.
+      # NOTE: schema is NO LONGER applied via /docker-entrypoint-initdb.d (which
+      # runs once on an empty volume and can never evolve a live DB). It is now
+      # applied by the `migrate` one-shot below via scripts/db/migrate.sh.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready checks if postgres is accepting connections
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - dpdp-network
+
+  # ---------------------------------------------------------------------------
+  # migrate — one-shot schema migration runner (runs, then exits).
+  # Applies pending migrations via scripts/db/migrate.sh as the admin role once
+  # Postgres is healthy, then seeds the local test hospital. Idempotent: on a
+  # DB that is already up to date it is a no-op. Uses the postgres image only
+  # for its bundled psql + sh (no server started).
+  #
+  # Prod note: do NOT run `seed` against a real database — run only `up`, as a
+  # deploy/CI step (see deploy.md). The seed line is a local-dev convenience.
+  # ---------------------------------------------------------------------------
+  migrate:
+    image: postgres:16-alpine
+    container_name: dpdp-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+    volumes:
+      - ./scripts/db:/scripts/db:ro
+    entrypoint: ["sh", "-c", "/scripts/db/migrate.sh up && /scripts/db/migrate.sh seed"]
+    restart: "no"
+    networks:
+      - dpdp-network
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 — OTP TTL store, session cache
+  # Used by: notification-service (OTP store), future: job queue
+  # Local dev: ephemeral (no persistence) — OTPs are short-lived anyway
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: dpdp-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    # No persistence for local dev — faster startup, no AOF overhead
+    # In production: use AWS ElastiCache Redis 7 (ap-south-1)
+    command: redis-server --save "" --appendonly no --loglevel notice
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - dpdp-network
+
+# =============================================================================
+# VOLUMES — named volumes managed by Docker (survive container restarts)
+# =============================================================================
+volumes:
+  postgres_data:
+    name: dpdp_postgres_data
+
+# =============================================================================
+# NETWORKS — isolated bridge network so services can talk by container name
+# =============================================================================
+networks:
+  dpdp-network:
+    name: dpdp-network
+    driver: bridge
+

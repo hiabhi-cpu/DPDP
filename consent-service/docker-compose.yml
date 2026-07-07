@@ -1,0 +1,40 @@
+# consent-service — standalone compose (polyrepo style).
+# Requires shared EXTERNAL infra (postgres on the dpdp-network) AND the other
+# services (auth, audit) reachable on that network — see ../DOCKER.md.
+# Run from this directory:  docker compose up -d --build
+# Build context is the repo root (..) because go.mod uses `replace ../shared`.
+# JWT public key: auth-service/keys; mock hospital secrets: DPDP/secrets (both ro).
+services:
+  consent-service:
+    container_name: dpdp-consent
+    build:
+      context: ..
+      dockerfile: consent-service/Dockerfile
+    environment:
+      CONSENT_SERVICE_PORT: "9000"
+      DATABASE_URL: "postgres://dpdp_app:dpdp_app_local_dev_pw@postgres:5432/dpdp?sslmode=disable"
+      JWT_PUBLIC_KEY_PATH: /keys/auth_public.pem
+      AUTH_SERVICE_URL: "http://auth-service:9006"
+      AUDIT_SERVICE_URL: "http://audit-service:9001"
+      NOTIFICATION_SERVICE_URL: "http://notification-service:9004"
+      SERVICE_TOKEN_SECRET: ${SERVICE_TOKEN_SECRET:-LOCAL-INTERNAL-SERVICE-SECRET-DEV-ONLY}
+      AWS_SECRETS_MOCK: "true"
+      LOCAL_SECRETS_PATH: /secrets/local_hospital_keys.json
+    ports:
+      - "9000:9000"
+    volumes:
+      - ../auth-service/keys:/keys:ro
+      - ../DPDP/secrets:/secrets:ro
+    restart: unless-stopped
+    networks:
+      - dpdp-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+networks:
+  dpdp-network:
+    external: true

@@ -1,0 +1,531 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.wrap{max-width:740px;margin:0 auto;padding:1.5rem 1rem 3rem}
+.tabs{display:flex;gap:4px;margin-bottom:1.25rem;border-bottom:0.5px solid var(--color-border-tertiary)}
+.tab{padding:8px 16px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;color:var(--color-text-secondary);margin-bottom:-1px}
+.tab.active{color:var(--color-text-primary);border-bottom-color:#1D9E75;font-weight:500}
+.tab-panel{display:none}.tab-panel.active{display:block}
+.section-label{font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.7px;margin:1.25rem 0 0.75rem}
+.alert{border-left:4px solid;padding:.9rem 1.25rem;margin-bottom:1rem;border-radius:0}
+.alert h3{font-size:13px;font-weight:500;margin-bottom:3px}
+.alert p{font-size:12px;line-height:1.6}
+.a-green{background:#E1F5EE;border-color:#1D9E75}.a-green h3{color:#085041}.a-green p{color:#0F6E56}
+.a-blue{background:#E6F1FB;border-color:#378ADD}.a-blue h3{color:#0C447C}.a-blue p{color:#185FA5}
+.a-amber{background:#FAEEDA;border-color:#BA7517}.a-amber h3{color:#633806}.a-amber p{color:#854F0B}
+.a-red{background:#FCEBEB;border-color:#E24B4A}.a-red h3{color:#791F1F}.a-red p{color:#A32D2D}
+.arch-layer{border-radius:var(--border-radius-lg);padding:10px 14px;margin-bottom:5px;border:0.5px solid}
+.layer-hdr{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.layer-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.layer-title{font-size:12px;font-weight:500}
+.layer-items{display:flex;flex-wrap:wrap;gap:6px}
+.layer-tag{font-size:11px;padding:3px 9px;border-radius:8px;font-weight:400}
+.arrow-row{text-align:center;font-size:11px;color:var(--color-text-tertiary);padding:2px 0;display:flex;align-items:center;justify-content:center;gap:6px}
+.arrow-line{flex:1;height:1px;background:var(--color-border-tertiary)}
+.card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1.25rem;margin-bottom:8px}
+.card h3{font-size:13px;font-weight:500;color:var(--color-text-primary);margin-bottom:5px}
+.card p{font-size:12px;color:var(--color-text-secondary);line-height:1.6}
+.module-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1.25rem}
+.module{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem}
+.module-hdr{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.module-icon{width:24px;height:24px;border-radius:var(--border-radius-md);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex-shrink:0}
+.module-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+.module-items{font-size:11px;color:var(--color-text-secondary);line-height:1.8}
+.module-items li{list-style:none;padding-left:0}
+.module-items li::before{content:'→ ';color:var(--color-text-tertiary)}
+.badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:8px;font-weight:500}
+.b-green{background:#E1F5EE;color:#085041}
+.b-blue{background:#E6F1FB;color:#0C447C}
+.b-amber{background:#FAEEDA;color:#854F0B}
+.b-red{background:#FCEBEB;color:#A32D2D}
+.b-purple{background:#EEEDFE;color:#534AB7}
+.b-gray{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.stack-section{margin-bottom:1.25rem}
+.stack-row{display:grid;grid-template-columns:140px 1fr auto;gap:12px;padding:8px 0;border-bottom:0.5px solid var(--color-border-tertiary);align-items:start}
+.stack-row:last-child{border-bottom:none}
+.stack-layer{font-size:11px;font-weight:500;color:var(--color-text-tertiary)}
+.stack-choice{font-size:12px;font-weight:500;color:var(--color-text-primary)}
+.stack-why{font-size:11px;color:var(--color-text-secondary);line-height:1.5;margin-top:2px}
+.checklist{display:flex;flex-direction:column;gap:6px;margin-bottom:1.25rem}
+.check-item{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:.9rem 1.25rem;display:flex;gap:10px;align-items:flex-start}
+.check-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.check-body{}
+.check-title{font-size:13px;font-weight:500;color:var(--color-text-primary);margin-bottom:2px}
+.check-desc{font-size:12px;color:var(--color-text-secondary);line-height:1.5}
+.code-block{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 14px;font-family:var(--font-mono);font-size:11px;color:var(--color-text-secondary);line-height:1.8;margin:8px 0;overflow-x:auto}
+.fe-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:1.25rem}
+.fe-card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem}
+.fe-card.winner{border:2px solid #1D9E75}
+.fe-name{font-size:13px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px}
+.fe-type{font-size:10px;margin-bottom:6px}
+.fe-desc{font-size:11px;color:var(--color-text-secondary);line-height:1.5;margin-bottom:6px}
+.fe-pros{font-size:11px;color:#085041;line-height:1.6}
+.fe-cons{font-size:11px;color:#A32D2D;line-height:1.6}
+.fe-pros::before{content:'+ '}
+.fe-cons::before{content:'− '}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:1.25rem}
+</style>
+
+<div class="wrap">
+<h2 class="sr-only">Full architecture for DPDP consent manager — layers, Go stack, frontend options, and build checklist</h2>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('arch')">Architecture</div>
+  <div class="tab" onclick="showTab('modules')">Modules</div>
+  <div class="tab" onclick="showTab('stack')">Go stack</div>
+  <div class="tab" onclick="showTab('frontend')">Frontend</div>
+  <div class="tab" onclick="showTab('checklist')">Build checklist</div>
+</div>
+
+<div id="tab-arch" class="tab-panel active">
+
+  <div class="alert a-green">
+    <h3>Design principle: thin middleware, immutable audit, zero clinical data</h3>
+    <p>Your Go backend is a consent event bus — it receives triggers from HMS, issues consent decisions, and writes immutable audit records. It never proxies clinical data. Every layer is stateless and horizontally scalable from Day 1.</p>
+  </div>
+
+  <div class="section-label">Full system — layer by layer</div>
+
+  <div class="arch-layer" style="background:#E1F5EE;border-color:#5DCAA5">
+    <div class="layer-hdr"><div class="layer-dot" style="background:#1D9E75"></div><div class="layer-title" style="color:#085041">Layer 1 — Client touchpoints</div></div>
+    <div class="layer-items">
+      <span class="layer-tag" style="background:#9FE1CB;color:#04342C">React Web Dashboard (hospital admin)</span>
+      <span class="layer-tag" style="background:#9FE1CB;color:#04342C">React Native tablet kiosk (OPD)</span>
+      <span class="layer-tag" style="background:#9FE1CB;color:#04342C">WhatsApp consent link (patient)</span>
+      <span class="layer-tag" style="background:#9FE1CB;color:#04342C">Embeddable JS widget (inside HMS)</span>
+      <span class="layer-tag" style="background:#9FE1CB;color:#04342C">Patient self-service portal (web)</span>
+    </div>
+  </div>
+
+  <div class="arrow-row"><div class="arrow-line"></div><span>HTTPS / TLS 1.3 only</span><div class="arrow-line"></div></div>
+
+  <div class="arch-layer" style="background:#E6F1FB;border-color:#85B7EB">
+    <div class="layer-hdr"><div class="layer-dot" style="background:#378ADD"></div><div class="layer-title" style="color:#0C447C">Layer 2 — API Gateway (Go / Nginx)</div></div>
+    <div class="layer-items">
+      <span class="layer-tag" style="background:#B5D4F4;color:#042C53">Rate limiting</span>
+      <span class="layer-tag" style="background:#B5D4F4;color:#042C53">JWT auth middleware</span>
+      <span class="layer-tag" style="background:#B5D4F4;color:#042C53">API key validation (HMS partners)</span>
+      <span class="layer-tag" style="background:#B5D4F4;color:#042C53">Request logging</span>
+      <span class="layer-tag" style="background:#B5D4F4;color:#042C53">CORS policy</span>
+      <span class="layer-tag" style="background:#B5D4F4;color:#042C53">mTLS for HMS webhooks</span>
+    </div>
+  </div>
+
+  <div class="arrow-row"><div class="arrow-line"></div><span>Internal routing</span><div class="arrow-line"></div></div>
+
+  <div class="arch-layer" style="background:#EEEDFE;border-color:#AFA9EC">
+    <div class="layer-hdr"><div class="layer-dot" style="background:#7F77DD"></div><div class="layer-title" style="color:#3C3489">Layer 3 — Core Go microservices</div></div>
+    <div class="layer-items">
+      <span class="layer-tag" style="background:#CECBF6;color:#26215C">consent-service</span>
+      <span class="layer-tag" style="background:#CECBF6;color:#26215C">audit-service</span>
+      <span class="layer-tag" style="background:#CECBF6;color:#26215C">withdrawal-service</span>
+      <span class="layer-tag" style="background:#CECBF6;color:#26215C">notification-service</span>
+      <span class="layer-tag" style="background:#CECBF6;color:#26215C">emergency-service</span>
+      <span class="layer-tag" style="background:#CECBF6;color:#26215C">report-service</span>
+      <span class="layer-tag" style="background:#CECBF6;color:#26215C">integration-service (HMS adapters)</span>
+      <span class="layer-tag" style="background:#CECBF6;color:#26215C">auth-service</span>
+    </div>
+  </div>
+
+  <div class="arrow-row"><div class="arrow-line"></div><span>async via Redis pub/sub + sync via gRPC</span><div class="arrow-line"></div></div>
+
+  <div class="arch-layer" style="background:#FAEEDA;border-color:#FAC775">
+    <div class="layer-hdr"><div class="layer-dot" style="background:#BA7517"></div><div class="layer-title" style="color:#633806">Layer 4 — Data layer</div></div>
+    <div class="layer-items">
+      <span class="layer-tag" style="background:#FAC775;color:#412402">PostgreSQL — consent vault (append-only)</span>
+      <span class="layer-tag" style="background:#FAC775;color:#412402">PostgreSQL — audit log (immutable)</span>
+      <span class="layer-tag" style="background:#FAC775;color:#412402">Redis — session cache + job queue</span>
+      <span class="layer-tag" style="background:#FAC775;color:#412402">AWS S3 India — consent PDFs</span>
+      <span class="layer-tag" style="background:#FAC775;color:#412402">AWS RDS — encrypted at rest (AES-256)</span>
+    </div>
+  </div>
+
+  <div class="arrow-row"><div class="arrow-line"></div><span>webhooks + REST + HL7 FHIR R4</span><div class="arrow-line"></div></div>
+
+  <div class="arch-layer" style="background:#FAECE7;border-color:#F0997B">
+    <div class="layer-hdr"><div class="layer-dot" style="background:#D85A30"></div><div class="layer-title" style="color:#993C1D">Layer 5 — External integrations</div></div>
+    <div class="layer-items">
+      <span class="layer-tag" style="background:#F5C4B3;color:#4A1B0C">HMS systems (Practo, MocDoc, eHospital)</span>
+      <span class="layer-tag" style="background:#F5C4B3;color:#4A1B0C">ABDM / ABHA (FHIR R4)</span>
+      <span class="layer-tag" style="background:#F5C4B3;color:#4A1B0C">WhatsApp Business API</span>
+      <span class="layer-tag" style="background:#F5C4B3;color:#4A1B0C">MSG91 / Exotel (SMS/OTP)</span>
+      <span class="layer-tag" style="background:#F5C4B3;color:#4A1B0C">AWS SES (email)</span>
+      <span class="layer-tag" style="background:#F5C4B3;color:#4A1B0C">Razorpay (billing)</span>
+    </div>
+  </div>
+</div>
+
+<div id="tab-modules" class="tab-panel">
+  <div class="section-label">8 Go services — what each owns</div>
+  <div class="module-grid">
+    <div class="module">
+      <div class="module-hdr">
+        <div class="module-icon" style="background:#E1F5EE;color:#085041">CS</div>
+        <div class="module-title">consent-service</div>
+      </div>
+      <ul class="module-items">
+        <li>POST /consent — capture new consent</li>
+        <li>GET /consent/check — gate check API</li>
+        <li>Hash consent payload (SHA-256)</li>
+        <li>Generate consent PDF + S3 upload</li>
+        <li>Multi-purpose consent per patient</li>
+      </ul>
+    </div>
+    <div class="module">
+      <div class="module-hdr">
+        <div class="module-icon" style="background:#EEEDFE;color:#534AB7">AS</div>
+        <div class="module-title">audit-service</div>
+      </div>
+      <ul class="module-items">
+        <li>Append-only write — no updates ever</li>
+        <li>Log every API call with timestamp</li>
+        <li>Log bypass events (no consent check)</li>
+        <li>Log emergency overrides with reason</li>
+        <li>Retention: 7 years minimum</li>
+      </ul>
+    </div>
+    <div class="module">
+      <div class="module-hdr">
+        <div class="module-icon" style="background:#FCEBEB;color:#A32D2D">WS</div>
+        <div class="module-title">withdrawal-service</div>
+      </div>
+      <ul class="module-items">
+        <li>POST /consent/withdraw</li>
+        <li>Update consent status to WITHDRAWN</li>
+        <li>Push webhook to HMS on withdrawal</li>
+        <li>Notify patient of withdrawal success</li>
+        <li>Block all future consent checks</li>
+      </ul>
+    </div>
+    <div class="module">
+      <div class="module-hdr">
+        <div class="module-icon" style="background:#FAEEDA;color:#854F0B">NS</div>
+        <div class="module-title">notification-service</div>
+      </div>
+      <ul class="module-items">
+        <li>WhatsApp consent link post-OPD</li>
+        <li>SMS OTP for consent verification</li>
+        <li>Email monthly compliance report</li>
+        <li>Post-emergency patient notification</li>
+        <li>Withdrawal confirmation to patient</li>
+      </ul>
+    </div>
+    <div class="module">
+      <div class="module-hdr">
+        <div class="module-icon" style="background:#FCEBEB;color:#A32D2D">ES</div>
+        <div class="module-title">emergency-service</div>
+      </div>
+      <ul class="module-items">
+        <li>POST /consent/emergency-override</li>
+        <li>Always returns allowed:true instantly</li>
+        <li>Creates Section 7(b) record</li>
+        <li>Flags for DPO review within 72hrs</li>
+        <li>Sends patient post-event notification</li>
+      </ul>
+    </div>
+    <div class="module">
+      <div class="module-hdr">
+        <div class="module-icon" style="background:#E6F1FB;color:#185FA5">RS</div>
+        <div class="module-title">report-service</div>
+      </div>
+      <ul class="module-items">
+        <li>Monthly compliance PDF (auto-sent)</li>
+        <li>Bypass discrepancy report</li>
+        <li>Consent coverage % by department</li>
+        <li>Pending DPO review items</li>
+        <li>DPBI-ready audit export (on demand)</li>
+      </ul>
+    </div>
+    <div class="module">
+      <div class="module-hdr">
+        <div class="module-icon" style="background:#E1F5EE;color:#085041">IS</div>
+        <div class="module-title">integration-service</div>
+      </div>
+      <ul class="module-items">
+        <li>Practo adapter (REST)</li>
+        <li>MocDoc adapter (webhook)</li>
+        <li>eHospital adapter (HL7 FHIR R4)</li>
+        <li>ABDM consent artifact builder</li>
+        <li>Generic HMS webhook receiver</li>
+      </ul>
+    </div>
+    <div class="module">
+      <div class="module-hdr">
+        <div class="module-icon" style="background:#EEEDFE;color:#534AB7">AU</div>
+        <div class="module-title">auth-service</div>
+      </div>
+      <ul class="module-items">
+        <li>JWT issue + refresh + revoke</li>
+        <li>Hospital-level API key management</li>
+        <li>Role-based access (admin/DPO/staff)</li>
+        <li>Multi-tenant isolation per hospital</li>
+        <li>OTP-based patient auth</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div id="tab-stack" class="tab-panel">
+  <div class="alert a-blue">
+    <h3>Go is an excellent choice for this system</h3>
+    <p>Go's concurrency model handles high-throughput consent checks perfectly — hospitals may have 200+ OPD patients per hour. Goroutines make the audit logging async without blocking the consent check response. Strong typing reduces bugs in compliance-critical code.</p>
+  </div>
+
+  <div class="section-label">Go library recommendations — every layer</div>
+  <div class="stack-section">
+    <div class="stack-row">
+      <div class="stack-layer">HTTP Framework</div>
+      <div>
+        <div class="stack-choice">Gin <span class="badge b-green">Recommended</span></div>
+        <div class="stack-why">Fastest Go HTTP framework. Excellent middleware support for auth, logging, rate limiting. Huge community. gin-gonic/gin on GitHub.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">Database ORM</div>
+      <div>
+        <div class="stack-choice">GORM <span class="badge b-green">Recommended</span></div>
+        <div class="stack-why">Full-featured ORM for PostgreSQL. Auto-migrations, associations, hooks. Use gorm.io/gorm + gorm.io/driver/postgres. For audit log: use raw sqlx for append-only inserts — more control.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">Raw SQL (audit)</div>
+      <div>
+        <div class="stack-choice">sqlx <span class="badge b-blue">For audit log only</span></div>
+        <div class="stack-why">jmoiron/sqlx gives you raw SQL with struct scanning. Use this for the append-only audit table — you want explicit control over inserts, no accidental updates via ORM.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">JWT Auth</div>
+      <div>
+        <div class="stack-choice">golang-jwt/jwt</div>
+        <div class="stack-why">Standard JWT library for Go. Use RS256 (RSA) not HS256 — asymmetric signing means each microservice can verify tokens without sharing the signing secret.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">Redis client</div>
+      <div>
+        <div class="stack-choice">go-redis/redis v9</div>
+        <div class="stack-why">Official Redis client for Go. Use for session store, job queue (consent PDF generation), and rate limiting buckets. Supports Redis Streams for event pub/sub between services.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">Hashing / Crypto</div>
+      <div>
+        <div class="stack-choice">crypto/sha256 (stdlib)</div>
+        <div class="stack-why">Go standard library. No external dependency needed. Use crypto/sha256 for consent payload hashing, crypto/rand for secure token generation, crypto/aes for field-level encryption.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">HTTP client (HMS)</div>
+      <div>
+        <div class="stack-choice">resty / stdlib net/http</div>
+        <div class="stack-way">go-resty/resty for outbound calls to HMS APIs — retry logic, timeout config, mTLS support built in. Use for Practo and MocDoc API calls.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">HL7 FHIR R4</div>
+      <div>
+        <div class="stack-choice">google/fhir (Go) <span class="badge b-amber">Complex</span></div>
+        <div class="stack-why">google/fhir has a Go library for FHIR R4 models. Alternatively, use samply/blaze or build FHIR JSON manually — ABDM uses a subset of FHIR that's not huge. Start with manual JSON, add library later.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">PDF generation</div>
+      <div>
+        <div class="stack-choice">jung-kurt/gofpdf or go-wkhtmltopdf</div>
+        <div class="stack-why">For consent PDF receipts and monthly reports. gofpdf is pure Go (no external deps). go-wkhtmltopdf renders HTML to PDF — easier for complex report layouts.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">Config management</div>
+      <div>
+        <div class="stack-choice">viper + godotenv</div>
+        <div class="stack-why">spf13/viper for multi-source config (env vars, YAML, AWS Secrets Manager). Never hardcode DB passwords or API keys — use env vars from Day 1.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">Logging</div>
+      <div>
+        <div class="stack-choice">uber-go/zap <span class="badge b-green">Recommended</span></div>
+        <div class="stack-why">Structured JSON logging. Fast, zero-allocation. Every consent event must be logged with requestId, hospitalId, patientId (hashed), timestamp, and outcome. Structured logs = queryable audit trail.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">Testing</div>
+      <div>
+        <div class="stack-choice">testify + gomock</div>
+        <div class="stack-why">stretchr/testify for assertions. golang/mock for service mocking. Consent logic is compliance-critical — 80%+ test coverage is non-negotiable. Wrong consent decisions are legal liability.</div>
+      </div>
+      <span></span>
+    </div>
+    <div class="stack-row">
+      <div class="stack-layer">AWS SDK</div>
+      <div>
+        <div class="stack-choice">aws-sdk-go-v2</div>
+        <div class="stack-why">Official AWS SDK v2 for Go. Use for S3 (consent PDFs), SES (emails), RDS (IAM auth), Secrets Manager (API keys). Always use IAM roles — never hardcode AWS credentials.</div>
+      </div>
+      <span></span>
+    </div>
+  </div>
+</div>
+
+<div id="tab-frontend" class="tab-panel">
+  <div class="alert a-amber">
+    <h3>On "Golang frontend library" — honest answer</h3>
+    <p>There is no mainstream Go frontend framework for production SaaS. Go shines on the backend. For the frontend, use React.js (JavaScript/TypeScript) — it's the standard, has the best ecosystem for dashboards and kiosk UIs, and your Go backend serves it via REST API. There are Go-based options worth knowing about though.</p>
+  </div>
+
+  <div class="section-label">Your frontend options</div>
+  <div class="fe-grid">
+    <div class="fe-card winner">
+      <div style="background:#E1F5EE;color:#085041;font-size:10px;font-weight:500;padding:2px 8px;border-radius:8px;display:inline-block;margin-bottom:6px">Recommended</div>
+      <div class="fe-name">React + TypeScript</div>
+      <div class="fe-type"><span class="badge b-green">JS/TS — separate frontend</span></div>
+      <div class="fe-desc">Your Go backend exposes REST APIs. React consumes them. Industry standard for SaaS dashboards. Huge component ecosystem.</div>
+      <div class="fe-pros">Best tooling for dashboards</div>
+      <div class="fe-pros">React Native reuse for tablet kiosk</div>
+      <div class="fe-pros">shadcn/ui, Recharts, TanStack Table</div>
+      <div class="fe-cons">Separate codebase from Go</div>
+    </div>
+    <div class="fe-card">
+      <div class="fe-name">Templ + HTMX</div>
+      <div class="fe-type"><span class="badge b-blue">Go-native templates</span></div>
+      <div class="fe-desc">Templ is a Go HTML templating language. HTMX adds interactivity without JS. Server-rendered HTML directly from Go. No separate frontend repo.</div>
+      <div class="fe-pros">Single Go codebase</div>
+      <div class="fe-pros">Faster initial load, SEO-friendly</div>
+      <div class="fe-pros">Great for simple admin views</div>
+      <div class="fe-cons">Not ideal for complex dashboards</div>
+      <div class="fe-cons">Tablet kiosk still needs React Native</div>
+    </div>
+    <div class="fe-card">
+      <div class="fe-name">Vecty / Gio</div>
+      <div class="fe-type"><span class="badge b-purple">Go to WASM</span></div>
+      <div class="fe-desc">Compile Go to WebAssembly and run it in the browser. Vecty is React-like. Gio is for native + web UIs in pure Go.</div>
+      <div class="fe-pros">100% Go codebase</div>
+      <div class="fe-cons">Immature ecosystem</div>
+      <div class="fe-cons">Large WASM bundle size</div>
+      <div class="fe-cons">Not production-ready for SaaS</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Practical recommendation: React for dashboard + Templ for HMS embeddable widget</h3>
+    <p>Use React + TypeScript for the hospital admin dashboard and patient portal — complex charts, tables, and real-time updates need React's ecosystem. Use Templ + HTMX for the embeddable JS widget that sits inside the HMS screens — it's lightweight, server-rendered, and drops into any HMS page with a single script tag. React Native for the tablet kiosk. Your Go backend serves all three via REST APIs.</p>
+  </div>
+
+  <div class="section-label">Key frontend libraries (React)</div>
+  <div class="code-block">
+// Dashboard
+shadcn/ui          → component library (tables, modals, forms)
+Recharts           → consent volume charts, compliance scores
+TanStack Table     → audit log table (10,000+ rows, virtual scroll)
+TanStack Query     → API data fetching + caching
+Zustand            → lightweight state management
+
+// Kiosk (React Native)
+Expo               → tablet app build + deploy
+react-hook-form    → consent form validation
+i18next            → multilingual (Hindi, Marathi, Kannada, English)
+
+// Embeddable widget (Templ / vanilla JS)
+Single JS bundle   → drops into HMS via &lt;script&gt; tag
+PostMessage API    → communicates with parent HMS window</div>
+</div>
+
+<div id="tab-checklist" class="tab-panel">
+  <div class="section-label">Critical things to get right from Day 1</div>
+  <div class="checklist">
+    <div class="check-item">
+      <div class="check-dot" style="background:#E24B4A"></div>
+      <div class="check-body">
+        <div class="check-title">Multi-tenancy from the first line of code</div>
+        <div class="check-desc">Every DB table must have a hospital_id column. Every API must scope queries by hospital_id from the JWT. Never let Hospital A see Hospital B's data. This is the hardest thing to retrofit — build it day one.</div>
+      </div>
+    </div>
+    <div class="check-item">
+      <div class="check-dot" style="background:#E24B4A"></div>
+      <div class="check-body">
+        <div class="check-title">Audit log is append-only — no UPDATE, no DELETE ever</div>
+        <div class="check-desc">Use PostgreSQL row-level security to block UPDATE and DELETE on the audit_log table at the DB level — not just application level. Even your own backend cannot tamper with it. This is your legal evidence.</div>
+      </div>
+    </div>
+    <div class="check-item">
+      <div class="check-dot" style="background:#BA7517"></div>
+      <div class="check-body">
+        <div class="check-title">Consent check API must respond under 300ms</div>
+        <div class="check-desc">HMS calls your API before rendering a patient record. If you're slow, doctors get frustrated and hospitals switch off the integration. Cache consent status in Redis with a 5-minute TTL. Cold path hits PostgreSQL, warm path hits Redis.</div>
+      </div>
+    </div>
+    <div class="check-item">
+      <div class="check-dot" style="background:#BA7517"></div>
+      <div class="check-body">
+        <div class="check-title">Patient ID must be hashed in your DB — never store raw ABHA/phone</div>
+        <div class="check-desc">Store HMAC-SHA256(patientPhone + hospitalSalt) as the patient identifier in your consent vault. Even if your DB is breached, patient identities are not exposed. The hospital provides the salt — you never know the raw patient identity.</div>
+      </div>
+    </div>
+    <div class="check-item">
+      <div class="check-dot" style="background:#1D9E75"></div>
+      <div class="check-body">
+        <div class="check-title">AWS Mumbai region only — data localization is a DPDP requirement</div>
+        <div class="check-desc">All RDS instances, S3 buckets, and Elasticache clusters must be in ap-south-1 (Mumbai). Set an AWS SCP (Service Control Policy) on your account to block any resource creation outside India. One wrong region = DPDP violation.</div>
+      </div>
+    </div>
+    <div class="check-item">
+      <div class="check-dot" style="background:#1D9E75"></div>
+      <div class="check-body">
+        <div class="check-title">Idempotent consent API — duplicate submissions must be safe</div>
+        <div class="check-desc">A tablet kiosk on flaky hospital WiFi may submit consent twice. Use an idempotency key (consentRequestId) on every POST /consent. Store processed keys in Redis for 24 hours. Duplicate submission returns the original consent record, not a new one.</div>
+      </div>
+    </div>
+    <div class="check-item">
+      <div class="check-dot" style="background:#534AB7"></div>
+      <div class="check-body">
+        <div class="check-title">Graceful offline mode for tablet kiosk</div>
+        <div class="check-desc">Hospital internet goes down. The kiosk must queue consent records locally (SQLite on device) and sync when connectivity returns. A hospital cannot stop OPD because your backend is unreachable. Offline-first design is non-negotiable for India.</div>
+      </div>
+    </div>
+    <div class="check-item">
+      <div class="check-dot" style="background:#534AB7"></div>
+      <div class="check-body">
+        <div class="check-title">Rate limit per hospital API key — not per IP</div>
+        <div class="check-desc">A hospital with 300 OPD patients/day might burst 50 requests/minute legitimately. Rate limit by hospital_id + endpoint, not by IP. Use token bucket algorithm in Redis. Alert if a hospital suddenly hits 10x their normal rate — possible integration bug or abuse.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert a-red">
+    <h3>The one thing that will kill you if you get it wrong</h3>
+    <p>Multi-tenancy isolation. If a bug causes Hospital A's patients to appear in Hospital B's dashboard — even for 5 minutes — you lose both customers, face potential DPDP liability, and your reputation is finished. Write a dedicated integration test suite that verifies tenant isolation for every single API endpoint before any release.</p>
+  </div>
+
+  <div class="btn-row">
+    <button onclick="sendPrompt('Write the PostgreSQL schema for the consent manager with multi-tenancy, audit log, and row-level security in Go GORM')">Generate DB schema ↗</button>
+    <button onclick="sendPrompt('Write the Go Gin boilerplate for the consent-service with JWT middleware and multi-tenant scoping')">Generate Go boilerplate ↗</button>
+    <button onclick="sendPrompt('Write the consent check API endpoint in Go with Redis caching under 300ms')">Consent check API code ↗</button>
+  </div>
+</div>
+</div>
+
+<script>
+function showTab(id){
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    const ids=['arch','modules','stack','frontend','checklist'];
+    t.classList.toggle('active',ids[i]===id);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p=>{
+    p.classList.toggle('active',p.id==='tab-'+id);
+  });
+}
+</script>

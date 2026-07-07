@@ -1,0 +1,10 @@
+go 1.25
+
+use (
+	./audit-service
+	./auth-service
+	./consent-service
+	./emergency-service
+	./notification-service
+	./shared
+)

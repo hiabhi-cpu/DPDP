@@ -1,0 +1,85 @@
+DPDP Consent Manager project
+
+two step process:
+
+1. Consent Management Software
+
+2. Integration with ABDM
+
+As of now only step 1
+
+
+Consent info from gazzate
+
+
+1. Consent Management Software
+
+Acts as Middle layer between existing HMS Software and there database with there patient database
+
+
+Flow of state when patient comes to hospital
+
+1 Patient walks in to Hospital A OPD
+New patient, no prior records anywhere. Gives their mobile number and name to front desk.
+
+2 Front desk — HMS (Bahmni/eHospital/Practo)
+Front desk registers patient in their existing HMS
+Name, age, mobile, address entered as always. Patient gets a Hospital A patient ID (e.g. PA-00234). This is normal HMS registration — nothing changes for the front desk.
+HMS fires webhook → POST https://your-api.com/webhook/patient-registered {patientId: "PA-00234", mobile: "9820XXXXXX", hospitalId: "H-MUMBAI-001"}
+
+3 My consent manager
+My system receives the webhook and checks if patient exists
+Hash the mobile number → check your consent vault. First visit anywhere → new record. Returning patient from another hospital → existing record found.
+patientKey = HMAC_SHA256(mobile + hospitalSalt) existing = db.query("SELECT * FROM patients WHERE key = ?", patientKey) // New patient → proceed to consent capture
+
+4 My consent manager — DPDP consent
+Tablet kiosk shows consent form to patient
+Patient reads purpose-specific consent: "Hospital A wants to collect your name, contact, and medical history for treatment. Do you consent?" — in their preferred language. OTP sent to mobile to confirm identity.
+DPDP consent — your product owns this
+
+5 Patient enters OTP → confirms consent
+Patient enters OTP on the tablet. This is their digital signature on the consent. Timestamp, purpose, and patient identity all locked together.
+consent = { patientKey: HMAC_SHA256(mobile), hospitalId: "H-MUMBAI-001", purposes: ["treatment", "insurance"], timestamp: "2026-04-12T09:34:00Z", hash: SHA256(above fields), status: "ACTIVE" }
+
+6 My consent manager
+Consent record written to your vault — immutable
+SHA-256 hashed consent artifact stored. Consent status pushed back to HMS via webhook so the doctor's screen shows a green consent badge. Audit log entry written.
+This is YOUR database — your liability
+
+
+Flow from doctor POV
+
+1 Doctor login as usual with the existing HMS no changes
+
+2 Enters Patient Id to get info
+The request comes to My consent Manager if the consent is provided doctor can view patient data otherwise data is will not be visible
+
+
+Flow during emergency
+
+1 Patient comes in emergency section
+
+2 If the first time comer to hospital no need for otp verfication
+if already registered user then all the consent is provided and registered as emergency and doctor id and other info is captured and stored
+
+3 After the patient is moved to normal opd the consent is taken and is upadted
+
+
+Other key points
+
+DPO page
+1 for complience check from the govt officer
+2 to check the logs of any hospital
+3 If any breach detected it is also reported
+
+Hospital Administration
+1 Can get reports of how many users have provided there consent
+2 Can check audit trail of there hospital
+
+Patient Page
+1 Can login and view which all hospitals he has consented to
+2 Can change the consent for each hospital seperatly
+3 Can decide how the data is used and where
+
+
+

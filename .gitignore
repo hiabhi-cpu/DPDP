@@ -1,0 +1,33 @@
+# ─── Secrets — NEVER commit real credentials ───
+# Private key signs JWTs in auth-service. Public key (auth_public.pem) IS safe to commit.
+.env
+**/keys/*
+!**/keys/auth_public.pem
+*_private.pem
+*.key
+**/secrets/local_hospital_keys.json
+
+# ─── Go build artifacts ───
+bin/
+*.exe
+*.test
+*.out
+vendor/
+logs/
+
+# ─── Frontend deps ───
+frontend/*/node_modules/
+frontend/*/.expo/
+
+# ─── Docker volumes (if accidentally created locally) ───
+postgres_data/
+
+# ─── IDE / OS noise ───
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# ─── Scratch ───
+temp.txt
