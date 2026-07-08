@@ -116,7 +116,7 @@ Response:
   "by_purpose":[ {"purpose":"treatment","active":120,"withdrawn":6},
                  {"purpose":"insurance","active":40,"withdrawn":8} ],
   "activity":  { "window_days": 30, "captures": 51, "withdrawals": 9, "renewals": 3 },
-  "emergency": { "overrides": 7, "pending_review": 2 }
+  "emergency": { "overrides": 7 }
 }
 ```
 
@@ -127,8 +127,13 @@ Sources, all in the vault:
 - `by_purpose` — active/withdrawn tally from the `purposes` JSONB map on latest rows.
 - `activity` — row counts by `type` (`CONSENT_GIVEN` / `WITHDRAWAL` / `CONSENT_RENEWAL`)
   with `created_at` inside the window.
-- `emergency.overrides` — `type='EMERGENCY_OVERRIDE'`; `pending_review` —
-  `dpo_review_status='PENDING'`.
+- `emergency.overrides` — count of `type='EMERGENCY_OVERRIDE'` rows.
+
+**"Pending review" is deliberately NOT in this endpoint.** `consent_vault` is
+append-only, so its `dpo_review_status` is frozen at `PENDING` and cannot count
+open reviews. The live pending count lives in `emergency.reviews` (mutable), which
+is the emergency-service's domain — the Dashboard sources the "pending review" tile
+from the existing `GET /api/v1/emergency/pending` response's `total`, not from stats.
 
 Registered on the existing consent `/api/v1/consent` group behind `JWTAuth`.
 
@@ -176,9 +181,10 @@ AUDIT LOG                                EMERGENCY REVIEW
 ```
 
 - **Login:** centered card on white; hospital name; email + password; primary button.
-- **Dashboard:** four stat tiles (active, withdrawn, emergency overrides, pending
-  review — pending shows a warning accent when > 0), a donut (active vs withdrawn),
-  a bar chart (by purpose), and an activity line with a window selector.
+- **Dashboard:** four stat tiles (active, withdrawn, emergency overrides from
+  `GET /api/consent/stats`; pending review from `GET /api/emergency/pending` `total`,
+  with a warning accent when > 0), a donut (active vs withdrawn), a bar chart (by
+  purpose), and an activity line with a window selector.
 - **Audit:** table (time, event_type, actor, masked patient_key, IP, expandable
   details); filters for `event_type` and date range; prev/next pagination against
   `total`.
