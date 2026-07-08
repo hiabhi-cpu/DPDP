@@ -1,6 +1,7 @@
 go 1.25
 
 use (
+	./admin-bff
 	./audit-service
 	./auth-service
 	./consent-service
