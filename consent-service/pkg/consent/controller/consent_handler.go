@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hiabhi-cpu/consent-service/pkg/consent/model"
@@ -156,4 +157,31 @@ func (h *ConsentHandler) Grant(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, consent)
+}
+
+// Stats handles GET /api/v1/consent/stats?window_days=30 — hospital-scoped
+// aggregate consent statistics for the admin dashboard.
+func (h *ConsentHandler) Stats(c *gin.Context) {
+	hospitalID := c.GetString(middleware.CtxHospitalID)
+	if hospitalID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing hospital identity"})
+		return
+	}
+
+	// window_days is optional; a bad or non-positive value falls back in the
+	// service to DefaultStatsWindowDays. Clamp the upper bound here.
+	windowDays, err := strconv.Atoi(c.DefaultQuery("window_days", "30"))
+	if err != nil || windowDays < 1 {
+		windowDays = 0 // service applies the default
+	}
+	if windowDays > 365 {
+		windowDays = 365
+	}
+
+	stats, err := h.svc.Stats(c.Request.Context(), hospitalID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch stats"})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
 }
