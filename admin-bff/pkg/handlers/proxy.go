@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -40,7 +41,10 @@ func (p *Proxy) bearer(c *gin.Context) (string, bool) {
 // pipe copies a downstream response back to the client (status + body).
 func pipe(c *gin.Context, resp *http.Response) {
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("pipe: error reading downstream response body: %v", err)
+	}
 	ct := resp.Header.Get("Content-Type")
 	if ct == "" {
 		ct = "application/json"
@@ -86,6 +90,9 @@ func (p *Proxy) ForwardReview(c *gin.Context) {
 
 	var body map[string]any
 	if err := c.ShouldBindJSON(&body); err != nil {
+		body = map[string]any{}
+	}
+	if body == nil {
 		body = map[string]any{}
 	}
 	body["reviewer_id"] = sess.Email // server-injected identity
