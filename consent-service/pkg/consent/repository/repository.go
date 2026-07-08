@@ -283,3 +283,55 @@ func (r *pgxConsentRepository) MarkOutboxFailed(ctx context.Context, id uuid.UUI
 	}
 	return nil
 }
+
+// GetStats runs the four stats aggregates in one RLS-scoped read transaction.
+func (r *pgxConsentRepository) GetStats(ctx context.Context, hospitalID string, windowDays int) (*model.ConsentStats, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("repository.GetStats: begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if err := setHospitalContext(ctx, tx, hospitalID); err != nil {
+		return nil, fmt.Errorf("repository.GetStats: %w", err)
+	}
+
+	stats := &model.ConsentStats{Activity: model.ActivityCounts{WindowDays: windowDays}}
+
+	if err := tx.QueryRow(ctx, queryStatsStatusCounts).Scan(
+		&stats.Consents.Active, &stats.Consents.Withdrawn, &stats.Consents.TotalPatients,
+	); err != nil {
+		return nil, fmt.Errorf("repository.GetStats: status counts: %w", err)
+	}
+
+	rows, err := tx.Query(ctx, queryStatsByPurpose)
+	if err != nil {
+		return nil, fmt.Errorf("repository.GetStats: by purpose: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p model.PurposeBreakdown
+		if err := rows.Scan(&p.Purpose, &p.Active, &p.Withdrawn); err != nil {
+			return nil, fmt.Errorf("repository.GetStats: scan purpose: %w", err)
+		}
+		stats.ByPurpose = append(stats.ByPurpose, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("repository.GetStats: purpose rows: %w", err)
+	}
+
+	if err := tx.QueryRow(ctx, queryStatsActivity, windowDays).Scan(
+		&stats.Activity.Captures, &stats.Activity.Withdrawals, &stats.Activity.Renewals,
+	); err != nil {
+		return nil, fmt.Errorf("repository.GetStats: activity: %w", err)
+	}
+
+	if err := tx.QueryRow(ctx, queryStatsEmergency).Scan(&stats.Emergency.Overrides); err != nil {
+		return nil, fmt.Errorf("repository.GetStats: emergency: %w", err)
+	}
+
+	if stats.ByPurpose == nil {
+		stats.ByPurpose = []model.PurposeBreakdown{}
+	}
+	return stats, nil
+}

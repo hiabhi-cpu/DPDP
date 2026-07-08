@@ -80,4 +80,54 @@ const (
 		SET attempts = attempts + 1, last_error = $2
 		WHERE id = $1
 	`
+
+	// ── Stats aggregates (read-only) ──────────────────────────────────────────
+	// Latest row per patient (excluding emergency rows and unknown identities),
+	// counted by aggregate status. RLS scopes all of these to one hospital.
+	queryStatsStatusCounts = `
+		WITH latest AS (
+			SELECT DISTINCT ON (patient_key) patient_key, status
+			FROM consent.consent_vault
+			WHERE type IN ('CONSENT_GIVEN','WITHDRAWAL','CONSENT_RENEWAL')
+			  AND patient_key IS NOT NULL
+			ORDER BY patient_key, version DESC
+		)
+		SELECT
+			count(*) FILTER (WHERE status = 'ACTIVE')    AS active,
+			count(*) FILTER (WHERE status = 'WITHDRAWN') AS withdrawn,
+			count(*)                                     AS total
+		FROM latest
+	`
+
+	queryStatsByPurpose = `
+		WITH latest AS (
+			SELECT DISTINCT ON (patient_key) patient_key, purposes
+			FROM consent.consent_vault
+			WHERE type IN ('CONSENT_GIVEN','WITHDRAWAL','CONSENT_RENEWAL')
+			  AND patient_key IS NOT NULL
+			ORDER BY patient_key, version DESC
+		)
+		SELECT kv.key AS purpose,
+			count(*) FILTER (WHERE kv.value = 'ACTIVE')    AS active,
+			count(*) FILTER (WHERE kv.value = 'WITHDRAWN') AS withdrawn
+		FROM latest, jsonb_each_text(latest.purposes) AS kv
+		GROUP BY kv.key
+		ORDER BY kv.key
+	`
+
+	// make_interval keeps the window parameter a bound integer, never string-built SQL.
+	queryStatsActivity = `
+		SELECT
+			count(*) FILTER (WHERE type = 'CONSENT_GIVEN')   AS captures,
+			count(*) FILTER (WHERE type = 'WITHDRAWAL')      AS withdrawals,
+			count(*) FILTER (WHERE type = 'CONSENT_RENEWAL') AS renewals
+		FROM consent.consent_vault
+		WHERE created_at >= now() - make_interval(days => $1)
+	`
+
+	queryStatsEmergency = `
+		SELECT count(*) AS overrides
+		FROM consent.consent_vault
+		WHERE type = 'EMERGENCY_OVERRIDE'
+	`
 )

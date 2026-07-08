@@ -32,6 +32,10 @@ type ConsentRepository interface {
 	// no domain row to piggyback on).
 	EnqueueAudit(ctx context.Context, outbox *model.OutboxRecord) error
 
+	// GetStats returns hospital-scoped aggregate consent statistics over a
+	// rolling activity window (windowDays). Read-only; RLS-scoped.
+	GetStats(ctx context.Context, hospitalID string, windowDays int) (*model.ConsentStats, error)
+
 	// Relay operations over the outbox.
 	FetchUnshippedOutbox(ctx context.Context, limit int) ([]model.OutboxRecord, error)
 	MarkOutboxShipped(ctx context.Context, id uuid.UUID) error
