@@ -31,3 +31,7 @@ postgres_data/
 
 # ─── Scratch ───
 temp.txt
+
+# ─── Local-only Claude Code settings + built tool binaries ───
+.claude/settings.local.json
+/repograph

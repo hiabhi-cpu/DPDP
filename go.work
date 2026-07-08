@@ -7,4 +7,5 @@ use (
 	./emergency-service
 	./notification-service
 	./shared
+	./tools/repograph
 )
