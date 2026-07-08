@@ -88,7 +88,7 @@ const (
 		WITH latest AS (
 			SELECT DISTINCT ON (patient_key) patient_key, status
 			FROM consent.consent_vault
-			WHERE type IN ('CONSENT_GIVEN','WITHDRAWAL','CONSENT_RENEWAL')
+			WHERE type <> 'EMERGENCY_OVERRIDE'
 			  AND patient_key IS NOT NULL
 			ORDER BY patient_key, version DESC
 		)
@@ -103,7 +103,7 @@ const (
 		WITH latest AS (
 			SELECT DISTINCT ON (patient_key) patient_key, purposes
 			FROM consent.consent_vault
-			WHERE type IN ('CONSENT_GIVEN','WITHDRAWAL','CONSENT_RENEWAL')
+			WHERE type <> 'EMERGENCY_OVERRIDE'
 			  AND patient_key IS NOT NULL
 			ORDER BY patient_key, version DESC
 		)
