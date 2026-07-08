@@ -1,6 +1,6 @@
 # DPDP Consent Manager — Phased Plan (corrected + status)
 
-**Last updated:** 2026-07-07
+**Last updated:** 2026-07-08
 **Legend:** ✅ done · 🟡 partial / in progress · ⬜ not started · 🔺 resequenced from the original plan (moved earlier — see note) · ➕ gap item added 2026-07-07 (full-project review — see note)
 
 > **What changed from the original phase map.** The macro-phasing (Foundation →
@@ -68,6 +68,7 @@ Done before Phase-2 so new services inherit corrected patterns. Full detail in
 | ✅➕ | BE | **OTP abuse protection** in notification-service — done (2026-07-07): 5-attempt verify cap (OTP burned on exceed), 60s resend cooldown + 5/hour per-mobile send cap (Redis), 429 responses; mock SMS log masks the mobile. |
 | ✅➕ | BE | **Consent writes gated on verified OTP session** — done (2026-07-07): `otp_verified=true` was written unconditionally with no check anywhere (verified sessions were stored in Redis but never read). notification-service now exposes `POST /internal/v1/otp/session/validate` (service-token auth); consent-service capture/withdraw/grant verify `session_id`+mobile against it before any vault write (403 on failure, fail-closed on outage). Idempotent replays still work after session expiry. |
 | ✅➕ | BE | **Security-review fixes (2026-07-07)** — spoofable audit IPs (all 5 services now `SetTrustedProxies(nil)`); artifact hash made re-verifiable (deterministic purpose serialization + hash computed over the *stored* `created_at`; was `%v` of a Go map + a discarded timestamp); audit-service no longer echoes internal errors and clamps `page`/`limit`; auth-service logs DB failures as 500 instead of masking as 401; constant-time API-key compare in `shared/crypto`. |
+| ⬜ | infra | **API gateway (dev) — single public entry point** (added 2026-07-08; was missing from every phase). Today each service exposes its own port (consent 9000 · audit 9001 · notification 9004 · emergency 9005 · auth 9006) and every client must know the topology. Add a reverse-proxy container (Caddy or nginx) in compose, one public port: `/v1/auth/*`→auth · exact `/api/v1/consent/emergency-override`→emergency (**must match before** the `/api/v1/consent/*`→consent prefix) · `/api/v1/consent/*`→consent · `/api/v1/audit/*`→audit · `/api/v1/otp/*`→notification · `/api/v1/emergency/*`→emergency. **`/internal/*` blocked at the edge** (service-token endpoints must never be public). CORS + security headers live here once, not per-service. The dashboard **BFF sits behind it** (BFF handles sessions/key custody; gateway handles topology); the kiosk gets one base URL instead of two. Ship with/just after the dashboard BFF. |
 | ⬜➕ | DB | **§9 schema groundwork** — vault columns for `data_principal_type` (ADULT / CHILD / GUARDIAN_CONSENT), guardian identity + relationship, and which mobile received the OTP. Migration is cheap now, painful after pilot data exists. Kiosk guardian *flow* is P2; hard gate before P3 real patients. |
 | ✅🔺 | infra | **Migration tooling** — pulled forward, done. `init/` retired → tracked migrations in `DPDP/scripts/db/migrations/` (0001–0010) + `public.schema_migrations`, run by `migrate.sh` (up/status/baseline/seed). Dev seed split out of the schema. Compose applies via a one-shot `migrate` service. Files are tool-agnostic SQL (goose swap-in later is mechanical). Verified: clean from-scratch apply + baseline of the existing volume. |
 
@@ -103,10 +104,11 @@ Ports: auth `9006` · consent `9000` · audit `9001` · emergency `9005`.
 - **Consent browse/detail** — there is no "list/search consents" endpoint (only
   check-by-mobile / check-by-HMS). If the dashboard needs a per-patient drill-down
   beyond the audit trail, that's an additional consent-service endpoint.
-- **CORS + auth for browser** — services are currently service-to-service/JWT with
-  no CORS config; a browser SPA needs CORS allow-listing and a browser-appropriate
-  login flow (the API-key `POST /v1/auth/token` is fine for a trusted admin login,
-  but the raw hospital API key must not ship in frontend code — proxy or exchange it).
+- **CORS + auth for browser** — resolved by two decisions (2026-07-08): the
+  dashboard **BFF** (see `docs/superpowers/specs/2026-07-08-admin-dashboard-design.md`)
+  keeps the hospital API key server-side and gives the browser a same-origin,
+  session-cookie API; the **API gateway** (P1 row above) is the single public entry
+  for everything else (kiosk, widget, portal) and owns CORS/security headers once.
 - **➕ Named users** — login today yields a *hospital-level* JWT; there is no concept of
   an individual admin/DPO user anywhere. Design the dashboard's auth around per-user
   accounts from the start (even if a single admin initially) so P3 RBAC + reviewer
@@ -164,6 +166,7 @@ Ports: auth `9006` · consent `9000` · audit `9001` · emergency `9005`.
 | ⬜ | BE | `withdrawal-service` — self-service withdrawal + correction/deletion requests |
 | — | — | ~~Breach notification~~ — **moved to Phase 2** (fix ②) |
 | ⬜ | infra | Deploy to **AWS ap-south-1** — ECS Fargate + RDS Mumbai + ElastiCache + S3 (**NON-NEGOTIABLE region**) |
+| ⬜ | infra | **Production ingress = same gateway route table** (added 2026-07-08). ALB path routing (or the P1 gateway container on ECS behind the ALB) mirrors the dev gateway's route manifest exactly — one manifest, two deployments, so dev and prod routing can't drift. TLS termination + `/internal/*` blocked at the edge + per-route rate limits here. (integration-service's mTLS webhook keeps its **own listener** — client-cert termination doesn't share the public gateway.) |
 | ⬜ | infra | GitHub Actions CI/CD → ECR → ECS; **tenant-isolation suite runs on every deploy** (suite itself now built in Phase 1) |
 | ⬜ | BE | Hospital onboarding script — provision hospital_id, API key, Secrets Manager entry, subdomain |
 | 🔺 | infra | Wire **AWS Secrets Manager** (finishes the Phase-1 🟡 mock) — real per-hospital keys + `SYSTEM_SALT` in the region |
@@ -258,6 +261,8 @@ From a full-project review against the DPDP Act and the code. Rows marked ➕ ab
    hospital. Audit view can call the existing `GET /api/v1/audit/logs`, but the
    consent-stats screen needs a new `GET /api/v1/consent/stats` first (see the
    endpoint map in Phase 1). Design its login for named users (➕ note above).
+   Ship the **dev API gateway** with it — single public origin from day one
+   (route table in the P1 gateway row; `/internal/*` blocked).
 6. ~~**➕ OTP abuse protection**~~ — ✅ done (2026-07-07), together with the
    security-review fixes (verified-OTP gating of consent writes, trusted-proxy
    hardening, re-verifiable artifact hashes).
