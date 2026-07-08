@@ -35,6 +35,10 @@ const (
 	reasonConsentWithdrawn = "consent_withdrawn"
 )
 
+// DefaultStatsWindowDays is the activity window used when the request omits or
+// passes a non-positive window_days.
+const DefaultStatsWindowDays = 30
+
 // ConsentService defines the business logic contract for consent operations.
 type ConsentService interface {
 	// Capture returns the consent and created=true for a new record, or the
@@ -46,6 +50,9 @@ type ConsentService interface {
 	// Grant extends an existing chain to (re-)grant purposes. changed=false means
 	// every requested purpose was already active (no new row written).
 	Grant(ctx context.Context, hospitalID, ip string, req *model.GrantConsentRequest) (consent *model.Consent, changed bool, err error)
+	// Stats returns hospital-scoped aggregate consent statistics. A non-positive
+	// windowDays falls back to DefaultStatsWindowDays.
+	Stats(ctx context.Context, hospitalID string, windowDays int) (*model.ConsentStats, error)
 }
 
 type consentService struct {
@@ -477,4 +484,15 @@ func (s *consentService) Grant(ctx context.Context, hospitalID, ip string, req *
 	}
 
 	return renewed, true, nil
+}
+
+func (s *consentService) Stats(ctx context.Context, hospitalID string, windowDays int) (*model.ConsentStats, error) {
+	if windowDays <= 0 {
+		windowDays = DefaultStatsWindowDays
+	}
+	stats, err := s.repo.GetStats(ctx, hospitalID, windowDays)
+	if err != nil {
+		return nil, fmt.Errorf("ConsentService.Stats: %w", err)
+	}
+	return stats, nil
 }
