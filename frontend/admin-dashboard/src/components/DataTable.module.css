@@ -1,0 +1,5 @@
+.scroll { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; background: var(--bg); font-size: 14px; }
+.table th, .table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.table th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+.empty { color: var(--text-muted); padding: 24px; text-align: center; }

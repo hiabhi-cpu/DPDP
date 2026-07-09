@@ -1,0 +1,5 @@
+.backdrop { position: fixed; inset: 0; background: rgba(17,24,39,0.4); display: grid; place-items: center; }
+.dialog { width: 420px; max-width: 92vw; background: var(--bg); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+.head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.title { margin: 0; font-size: 17px; }
+.close { border: 0; background: none; font-size: 22px; line-height: 1; color: var(--text-muted); }

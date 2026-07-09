@@ -1,0 +1,10 @@
+.tile {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 6px; min-width: 130px;
+}
+.label { font-size: 13px; color: var(--text-muted); }
+.value { font-size: 28px; font-weight: 700; }
+.default { color: var(--text); }
+.active { color: var(--status-active); }
+.withdrawn { color: var(--status-withdrawn); }
+.danger { color: var(--status-danger); }

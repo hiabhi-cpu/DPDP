@@ -1,0 +1,9 @@
+.bar { display: flex; align-items: center; gap: 18px; padding: 0 20px; height: 56px; background: var(--bg); border-bottom: 1px solid var(--border); }
+.brand { font-weight: 700; color: var(--primary); }
+.nav { display: flex; gap: 6px; }
+.link { padding: 8px 12px; border-radius: 6px; text-decoration: none; color: var(--text-muted); font-size: 14px; }
+.active { color: var(--primary); background: var(--surface); font-weight: 600; }
+.spacer { flex: 1; }
+.user { font-size: 13px; color: var(--text-muted); }
+.logout { border: 1px solid var(--border); background: var(--bg); padding: 7px 12px; border-radius: 6px; font-size: 13px; }
+.main { padding: 24px; max-width: 1100px; margin: 0 auto; }
