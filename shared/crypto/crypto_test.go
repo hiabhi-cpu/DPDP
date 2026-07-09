@@ -72,17 +72,15 @@ func TestHashAndVerifyOTP(t *testing.T) {
 	})
 }
 
-func TestHashAndVerifyAPIKey(t *testing.T) {
+func TestHashAPIKey(t *testing.T) {
 	rawKey := "hospital-api-key-secret"
 
-	t.Run("correct key verifies", func(t *testing.T) {
-		hash := HashAPIKey(rawKey)
-		assert.True(t, VerifyAPIKey(rawKey, hash))
+	t.Run("deterministic", func(t *testing.T) {
+		assert.Equal(t, HashAPIKey(rawKey), HashAPIKey(rawKey))
 	})
 
-	t.Run("wrong key does not verify", func(t *testing.T) {
-		hash := HashAPIKey(rawKey)
-		assert.False(t, VerifyAPIKey("wrong-key", hash))
+	t.Run("different key, different hash", func(t *testing.T) {
+		assert.NotEqual(t, HashAPIKey(rawKey), HashAPIKey("wrong-key"))
 	})
 }
 

@@ -7,7 +7,6 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -83,14 +82,6 @@ func VerifyOTP(rawOTP, hash string) bool {
 func HashAPIKey(rawKey string) string {
 	sum := sha256.Sum256([]byte(rawKey))
 	return hex.EncodeToString(sum[:])
-}
-
-// VerifyAPIKey compares a raw key against a stored hash in constant time, so
-// the comparison itself cannot leak hash prefixes via timing. Kept for
-// backwards compatibility; the main login path re-hashes and looks up the DB.
-func VerifyAPIKey(rawKey, hash string) bool {
-	computed := HashAPIKey(rawKey)
-	return subtle.ConstantTimeCompare([]byte(computed), []byte(hash)) == 1
 }
 
 // ComputeArtifactHash generates a SHA-256 tamper-evident hash of a consent

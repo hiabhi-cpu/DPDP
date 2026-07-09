@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    allowedHosts: [".ngrok-free.app"], // ponytail: dev tunnel; drop for local-only
     proxy: {
       // Same-origin from the browser; Vite forwards /api to the BFF server-side.
       "/api": { target: "http://localhost:9007", changeOrigin: true },

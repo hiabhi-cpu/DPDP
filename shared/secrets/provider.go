@@ -87,61 +87,23 @@ func (m *MockProvider) GetHospitalKey(_ context.Context, hospitalID string) (str
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AWSProvider — production (AWS Secrets Manager, ap-south-1)
+// NewFromEnv — factory (mock only for now; AWS Secrets Manager lands in Phase 3)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// AWSProvider fetches secrets from AWS Secrets Manager.
-// Paths follow the convention:
-//   - System salt:   /consentmanager/system/salt
-//   - Hospital key:  /consentmanager/hospitals/{hospitalID}/key
+// NewFromEnv returns a MockProvider when AWS_SECRETS_MOCK=true. The AWS Secrets
+// Manager provider is not built yet (Phase 3), so any other value is a
+// configuration error rather than a silent stub.
 //
-// NOTE: This is a stub. Wire in aws-sdk-go-v2 when deploying to production.
-type AWSProvider struct {
-	region string
-}
-
-// NewAWSProvider creates a provider backed by AWS Secrets Manager in the
-// given region. Must be ap-south-1 for DPDP data localisation compliance.
-func NewAWSProvider(region string) *AWSProvider {
-	return &AWSProvider{region: region}
-}
-
-func (a *AWSProvider) GetSystemSalt(_ context.Context) (string, error) {
-	// TODO: implement aws-sdk-go-v2 GetSecretValue call
-	// secretID := "/consentmanager/system/salt"
-	return "", fmt.Errorf("secrets.AWSProvider: not yet implemented — use MockProvider for local dev")
-}
-
-func (a *AWSProvider) GetHospitalKey(_ context.Context, hospitalID string) (string, error) {
-	// TODO: implement aws-sdk-go-v2 GetSecretValue call
-	// secretID := fmt.Sprintf("/consentmanager/hospitals/%s/key", hospitalID)
-	return "", fmt.Errorf("secrets.AWSProvider: not yet implemented — use MockProvider for local dev")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// NewFromEnv — factory that picks provider based on AWS_SECRETS_MOCK env var
-// ─────────────────────────────────────────────────────────────────────────────
-
-// NewFromEnv returns a MockProvider if AWS_SECRETS_MOCK=true, otherwise an
-// AWSProvider. Services call this once at startup.
-//
-// Required env vars:
-//   - AWS_SECRETS_MOCK=true|false
-//   - LOCAL_SECRETS_PATH=./secrets/local_hospital_keys.json  (mock only)
-//   - AWS_REGION=ap-south-1                                  (AWS only)
+// Required env vars (mock):
+//   - AWS_SECRETS_MOCK=true
+//   - LOCAL_SECRETS_PATH=./secrets/local_hospital_keys.json
 func NewFromEnv() (Provider, error) {
-	mock := os.Getenv("AWS_SECRETS_MOCK")
-	if mock == "true" {
-		path := os.Getenv("LOCAL_SECRETS_PATH")
-		if path == "" {
-			return nil, fmt.Errorf("secrets.NewFromEnv: LOCAL_SECRETS_PATH must be set when AWS_SECRETS_MOCK=true")
-		}
-		return NewMockProvider(path), nil
+	if os.Getenv("AWS_SECRETS_MOCK") != "true" {
+		return nil, fmt.Errorf("secrets.NewFromEnv: AWS Secrets Manager not wired yet — set AWS_SECRETS_MOCK=true for local dev")
 	}
-
-	region := os.Getenv("AWS_REGION")
-	if region == "" {
-		region = "ap-south-1" // DPDP data localisation default
+	path := os.Getenv("LOCAL_SECRETS_PATH")
+	if path == "" {
+		return nil, fmt.Errorf("secrets.NewFromEnv: LOCAL_SECRETS_PATH must be set when AWS_SECRETS_MOCK=true")
 	}
-	return NewAWSProvider(region), nil
+	return NewMockProvider(path), nil
 }
