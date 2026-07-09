@@ -14,6 +14,11 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/hiabhi-cpu/admin-bff/bootstrap"
+	"github.com/hiabhi-cpu/admin-bff/pkg/auth"
+	"github.com/hiabhi-cpu/admin-bff/pkg/handlers"
+	"github.com/hiabhi-cpu/admin-bff/pkg/httpx"
+	"github.com/hiabhi-cpu/admin-bff/pkg/routes"
+	"github.com/hiabhi-cpu/admin-bff/pkg/session"
 )
 
 func main() {
@@ -25,14 +30,25 @@ func main() {
 	rdb := bootstrap.NewRedis(ctx, env.RedisURL)
 	defer rdb.Close()
 
+	cookieCfg := httpx.CookieConfig{Secure: env.CookieSecure}
+	users := auth.NewUserRepository(db)
+	store := session.NewRedisStore(rdb, env.SessionTTL)
+	tokens := auth.NewHospitalTokenClient(env.AuthServiceURL, env.HospitalAPIKey)
+
+	deps := routes.Deps{
+		Auth:      handlers.NewAuthHandler(users, store, env.SessionTTL, cookieCfg),
+		Store:     store,
+		Cookie:    cookieCfg,
+		Consent:   handlers.NewProxy(env.ConsentServiceURL, tokens),
+		Audit:     handlers.NewProxy(env.AuditServiceURL, tokens),
+		Emergency: handlers.NewProxy(env.EmergencyServiceURL, tokens),
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	_ = r.SetTrustedProxies(nil)
 	r.Use(gin.Recovery(), gin.Logger())
-
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "admin-bff"})
-	})
+	routes.Setup(r, deps)
 
 	addr := fmt.Sprintf(":%s", env.Port)
 	srv := &http.Server{Addr: addr, Handler: r, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}

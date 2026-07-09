@@ -1,0 +1,38 @@
+# admin-bff — standalone compose (polyrepo style).
+# Requires shared EXTERNAL infra (postgres + redis on the dpdp-network) AND the
+# other services (auth, consent, audit, emergency) reachable on that network —
+# see ../DOCKER.md.
+# Run from this directory:  docker compose up -d --build
+# Build context is the repo root (..) because go.mod uses `replace ../shared`.
+services:
+  admin-bff:
+    container_name: dpdp-admin-bff
+    build:
+      context: ..
+      dockerfile: admin-bff/Dockerfile
+    environment:
+      ADMIN_BFF_PORT: "9007"
+      DATABASE_URL: "postgres://dpdp_app:dpdp_app_local_dev_pw@postgres:5432/dpdp?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      HOSPITAL_API_KEY: ${HOSPITAL_API_KEY:-TEST-HOSPITAL-API-KEY-LOCAL-DEV-001}
+      AUTH_SERVICE_URL: "http://auth-service:9006"
+      CONSENT_SERVICE_URL: "http://consent-service:9000"
+      AUDIT_SERVICE_URL: "http://audit-service:9001"
+      EMERGENCY_SERVICE_URL: "http://emergency-service:9005"
+      SESSION_TTL: "8h"
+      COOKIE_SECURE: "false"
+    ports:
+      - "9007:9007"
+    restart: unless-stopped
+    networks:
+      - dpdp-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9007/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+networks:
+  dpdp-network:
+    external: true
