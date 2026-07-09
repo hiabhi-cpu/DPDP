@@ -19,6 +19,7 @@ export function Dashboard() {
   useEffect(() => {
     let alive = true;
     setError("");
+    setStats(null); // show Loading… instead of the previous window's stale tiles
     Promise.all([api.getStats(windowDays), api.getEmergencyPending()])
       .then(([s, p]) => { if (alive) { setStats(s); setPending(p.total); } })
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : "failed to load"); });

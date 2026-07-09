@@ -84,6 +84,10 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
 		return
 	}
-	sess := v.(session.Session)
+	sess, ok := v.(session.Session)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"email": sess.Email, "role": sess.Role})
 }

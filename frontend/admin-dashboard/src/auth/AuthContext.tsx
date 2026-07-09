@@ -16,17 +16,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let alive = true;
     // Seed a CSRF token, then restore any existing session.
     (async () => {
       try {
         await api.getCsrf();
-        setUser(await api.me());
+        const me = await api.me();
+        if (alive) setUser(me);
       } catch {
-        setUser(null);
+        if (alive) setUser(null);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
+    return () => { alive = false; };
   }, []);
 
   const login = async (email: string, password: string) => {

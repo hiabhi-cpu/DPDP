@@ -103,3 +103,15 @@ func TestLoginDisabledUser(t *testing.T) {
 		t.Fatalf("disabled login code = %d, want 401", w.Code)
 	}
 }
+
+func TestLoginUnknownUser(t *testing.T) {
+	r, _ := newAuthRouter(t, seededRepo(t))
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/session",
+		strings.NewReader(`{"email":"nobody@x.local","password":"whatever"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("unknown-user login code = %d, want 401 (no account enumeration)", w.Code)
+	}
+}

@@ -1,6 +1,6 @@
 # DPDP Consent Manager — Phased Plan (corrected + status)
 
-**Last updated:** 2026-07-08
+**Last updated:** 2026-07-09
 **Legend:** ✅ done · 🟡 partial / in progress · ⬜ not started · 🔺 resequenced from the original plan (moved earlier — see note) · ➕ gap item added 2026-07-07 (full-project review — see note)
 
 > **What changed from the original phase map.** The macro-phasing (Foundation →
@@ -47,7 +47,7 @@ Done before Phase-2 so new services inherit corrected patterns. Full detail in
 
 ---
 
-## Phase 1 · Foundation — 🟡 backend done, frontend not started
+## Phase 1 · Foundation — 🟡 backend + admin-dashboard done; kiosk not started
 
 **Goal:** Full consent flow working locally with a test hospital.
 
@@ -61,7 +61,7 @@ Done before Phase-2 so new services inherit corrected patterns. Full detail in
 | ✅ | BE | `notification-service` — OTP send+verify, Redis TTL store |
 | 🟡 | infra | Secrets: `SYSTEM_SALT` + per-hospital key — **local/env mock only**; AWS Secrets Manager not wired |
 | ✅ | BE | Patient-key HMAC util in `shared/crypto` (double-keyed, `v1|` versioned) |
-| ⬜ | FE | `frontend/admin-dashboard/` — React+TS, consent stats + audit view. **APIs:** auth `POST /v1/auth/token` (login), audit `GET /api/v1/audit/logs` (view — exists), consent `GET /api/v1/consent/stats` (**does not exist — must build**). See the endpoint map below. |
+| ✅ | FE | `frontend/admin-dashboard/` — **done (2026-07-09)**: Vite+React+TS SPA (login · consent-stats dashboard w/ charts · audit view w/ filter+pagination · emergency review queue), fronted by a new Go **`admin-bff/`** that keeps the hospital API key + JWT server-side and gives the browser a same-origin session-cookie API (bcrypt login vs new `auth.admin_users`, Redis sessions, double-submit CSRF, JWT-injecting reverse proxy, server-injected emergency `reviewer_id`). Built the new `GET /api/v1/consent/stats` aggregate; fixed a pre-existing audit-service `inet`→string scan bug that 500'd `GET /api/v1/audit/logs`. Full-stack live-verified end-to-end; TDD throughout. See `docs/superpowers/{specs,plans}/2026-07-08-admin-dashboard-*.md`. |
 | ⬜ | mobile | `frontend/kiosk/` — React Native Expo, online OTP + consent form |
 | ✅🔺 | test | **Tenant-isolation test suite** — pulled forward from Phase 3, now written & green (`consent-service/test/`, 6 cases: read isolation, fail-closed, bogus context, append-only ×2, role-not-privileged). Build-tagged `integration`; run via `test/run-isolation.sh`. **CI wiring still pending (Phase 3).** |
 | ✅➕ | infra | **Monorepo consolidation** — was 7 single-commit per-service repos + untracked root docs, with `replace ../shared` coupling across repo boundaries. Now one root repo (`main`), root `.gitignore` + `go.work`; nested `.git` dirs backed up then removed. One CI pipeline in P3 instead of seven. |
@@ -85,22 +85,19 @@ Ports: auth `9006` · consent `9000` · audit `9001` · emergency `9005`.
 | Dashboard screen | Method + path | Service | Status |
 |---|---|---|---|
 | Login / session | `POST /v1/auth/token` (`{api_key}` → JWT) | auth | ✅ exists |
-| Audit log view (paginated, hospital-scoped) | `GET /api/v1/audit/logs?page=&limit=` | audit | ✅ exists (`GetLogs`) |
-| Consent stats (active vs withdrawn, checks allowed/denied, emergency count) | `GET /api/v1/consent/stats` | consent | ⬜ **must build** |
+| Audit log view (paginated, hospital-scoped) | `GET /api/v1/audit/logs?page=&limit=&event_type=` | audit | ✅ exists (`GetLogs`; `inet` ip_address scan bug fixed 2026-07-09) |
+| Consent stats (active vs withdrawn per purpose, captures/withdrawals/renewals in a window, emergency overrides) | `GET /api/v1/consent/stats?window_days=` | consent | ✅ **built (2026-07-09)** — vault-derived aggregate under RLS. "checks allowed/denied" deferred (audit-owned, needs an audit-side aggregate); "pending review" comes from `GET /api/v1/emergency/pending` `total`, not stats (vault is append-only, can't count open reviews). |
 | DPO: emergency review queue (+ overdue flag) | `GET /api/v1/emergency/pending` | emergency | ✅ exists |
 | DPO: record a review decision | `POST /api/v1/emergency/:id/review` | emergency | ✅ exists |
 | Compliance health score | (aggregate) | consent/audit | ⬜ future (derive, or extend `/stats`) |
 
 **Gaps to close before/with the dashboard:**
-- **`GET /api/v1/consent/stats`** — the "consent stats" half of the Phase-1
-  dashboard has **no endpoint today**. consent-service exposes only
-  capture/check/withdraw/grant (all `POST`, patient-scoped) — nothing that returns
-  hospital-level counts. Build a read-only aggregate (counts over `consent_vault`
-  under RLS: active/withdrawn per purpose, captures & checks in a window,
-  allowed-vs-denied). Small addition; pairs naturally with building the dashboard.
-- **Audit filters** — confirm/extend `GET /api/v1/audit/logs` to accept
-  `event_type` and date-range params (today it paginates via `page`/`limit`); the
-  audit view will want to filter by event type and time.
+- ✅ **`GET /api/v1/consent/stats`** — **built (2026-07-09)**. Read-only aggregate
+  over `consent_vault` under RLS (active/withdrawn per purpose, captures/withdrawals/
+  renewals in a `window_days`, emergency overrides). "checks allowed/denied" left
+  out — those are audit events, not vault rows; a small audit-side aggregate later.
+- ✅ **Audit filters** — `GET /api/v1/audit/logs` already accepts `event_type`
+  (+ `page`/`limit`); the dashboard uses it. Date-range params still a future add.
 - **Consent browse/detail** — there is no "list/search consents" endpoint (only
   check-by-mobile / check-by-HMS). If the dashboard needs a per-patient drill-down
   beyond the audit trail, that's an additional consent-service endpoint.
@@ -109,13 +106,14 @@ Ports: auth `9006` · consent `9000` · audit `9001` · emergency `9005`.
   keeps the hospital API key server-side and gives the browser a same-origin,
   session-cookie API; the **API gateway** (P1 row above) is the single public entry
   for everything else (kiosk, widget, portal) and owns CORS/security headers once.
-- **➕ Named users** — login today yields a *hospital-level* JWT; there is no concept of
-  an individual admin/DPO user anywhere. Design the dashboard's auth around per-user
-  accounts from the start (even if a single admin initially) so P3 RBAC + reviewer
-  attribution slot in without a rewrite.
+- ✅ **➕ Named users** — **done (2026-07-09)**. `auth.admin_users` (bcrypt, `role`
+  admin/dpo, per-hospital) + the admin-bff login. The hospital-level JWT is now
+  minted server-side by the BFF from the API key; emergency `reviewer_id` is
+  injected from the authenticated admin, not client free text. P3 RBAC slots onto
+  the `role` column without a rewrite.
 
-**Phase-1 done when:** consent captured → vault written → audit logged → badge in dashboard.
-**Backend half is met**; the two frontends + the pulled-forward test/migration items remain.
+**Phase-1 done when:** consent captured → vault written → audit logged → badge in dashboard. ✅ **met** — admin-dashboard live end-to-end.
+**Remaining P1:** the kiosk frontend + AWS Secrets Manager (still mock). The dev API gateway row above is optional/deferred (the BFF already gives the dashboard a same-origin API).
 
 ---
 
@@ -234,7 +232,7 @@ From a full-project review against the DPDP Act and the code. Rows marked ➕ ab
 | Monorepo consolidation — ✅ done | P1 (now) | Was 7 disconnected single-commit repos + untracked docs; everything downstream assumes one history |
 | OTP abuse protection — ✅ done | P1 | Verify cap + resend cooldown + hourly cap shipped 2026-07-07 |
 | §9 children/guardian — schema | P1 | Cheap before data exists, painful after |
-| Named-user login design (dashboard) | P1 | Avoid auth rewrite when P3 RBAC lands |
+| Named-user login (dashboard) — ✅ done | P1 | `auth.admin_users` + admin-bff login shipped 2026-07-09 |
 | Consent-check fail-open/closed policy | P2 | Must precede hms-widget |
 | §9 guardian flow (kiosk) | P2 | Hard gate before real patients |
 | Kiosk device identity | P2 | API key can't ship in the app bundle |
@@ -257,12 +255,12 @@ From a full-project review against the DPDP Act and the code. Rows marked ➕ ab
    **dashboard UI** (Phase 3).
 4. ~~**➕ Monorepo consolidation**~~ — ✅ done (2026-07-07): single root repo,
    root `.gitignore` + `go.work`; unblocks worktrees, review workflow, single CI.
-5. **First frontend** (`admin-dashboard`) — nothing is currently visible to a
-   hospital. Audit view can call the existing `GET /api/v1/audit/logs`, but the
-   consent-stats screen needs a new `GET /api/v1/consent/stats` first (see the
-   endpoint map in Phase 1). Design its login for named users (➕ note above).
-   Ship the **dev API gateway** with it — single public origin from day one
-   (route table in the P1 gateway row; `/internal/*` blocked).
+5. ~~**First frontend** (`admin-dashboard`)~~ — ✅ **done (2026-07-09)**: admin-bff +
+   React SPA (login · stats · audit · emergency review), named-user login,
+   `GET /api/v1/consent/stats` built, audit `inet` bug fixed. Live-verified. The
+   **dev API gateway** was NOT shipped with it (deferred) — the BFF already gives the
+   dashboard a same-origin API; the gateway is only needed once the kiosk/widget/portal
+   need one public origin.
 6. ~~**➕ OTP abuse protection**~~ — ✅ done (2026-07-07), together with the
    security-review fixes (verified-OTP gating of consent writes, trusted-proxy
    hardening, re-verifiable artifact hashes).
