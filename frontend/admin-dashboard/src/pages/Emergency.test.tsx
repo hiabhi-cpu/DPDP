@@ -22,4 +22,17 @@ describe("Emergency", () => {
     await userEvent.click(await screen.findByRole("button", { name: /mark verified/i }));
     expect(review).toHaveBeenCalledWith("acc-1", "VERIFIED");
   });
+
+  it("shows the review error inside the modal on failure and keeps it open", async () => {
+    getPending.mockResolvedValueOnce({ pending: [item], total: 1 });
+    review.mockRejectedValueOnce(new Error("review failed"));
+
+    render(<Emergency />);
+    expect(await screen.findByText("D-12")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /review/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /mark verified/i }));
+
+    expect(await screen.findByText("review failed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /mark verified/i })).toBeInTheDocument();
+  });
 });
