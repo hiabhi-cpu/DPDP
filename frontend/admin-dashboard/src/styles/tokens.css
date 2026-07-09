@@ -1,0 +1,23 @@
+:root {
+  --bg: #ffffff;
+  --surface: #f6f8fa;
+  --border: #e5e7eb;
+  --text: #111827;
+  --text-muted: #6b7280;
+
+  --primary: #0f766e;         /* calm medical teal — the single accent */
+  --primary-contrast: #ffffff;
+
+  --status-active: #15803d;   /* green  */
+  --status-withdrawn: #b45309;/* amber  */
+  --status-danger: #b91c1c;   /* red    */
+
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(17, 24, 39, 0.08);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--font); color: var(--text); background: var(--surface); }
+a { color: var(--primary); }
+button { font-family: inherit; cursor: pointer; }
