@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { ReviewItem } from "../api/types";
-import { DataTable, Column } from "../components/DataTable";
+import { DataTable, type Column } from "../components/DataTable";
 import { Modal } from "../components/Modal";
 import styles from "./Emergency.module.css";
 

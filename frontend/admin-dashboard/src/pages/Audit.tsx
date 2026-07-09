@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { AuditEvent, AuditLogPage } from "../api/types";
-import { DataTable, Column } from "../components/DataTable";
+import { DataTable, type Column } from "../components/DataTable";
 import styles from "./Audit.module.css";
 
 const LIMIT = 25;

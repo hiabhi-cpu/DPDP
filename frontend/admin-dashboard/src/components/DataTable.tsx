@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { type ReactNode } from "react";
 import styles from "./DataTable.module.css";
 
 export interface Column<T> { key: string; header: string; render: (row: T) => ReactNode; }
