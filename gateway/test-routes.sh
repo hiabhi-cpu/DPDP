@@ -22,14 +22,24 @@ else
   echo "FAIL: emergency-override must be written before consent prefix (override=$ov consent=$co)"; fail=1
 fi
 
-# The override matcher must proxy to emergency, not consent. A mis-pointed
-# upstream leaves the line order intact, so the ordering check alone can't
-# catch it — assert the target explicitly.
-if grep -qE 'reverse_proxy[[:space:]]+@override[[:space:]]+emergency-service:9005' "$CADDYFILE"; then
-  echo "PASS: override upstream is emergency-service:9005"
-else
-  echo "FAIL: override must proxy to emergency-service:9005"; fail=1
-fi
+# Each matcher must proxy to its intended upstream. A mis-pointed upstream
+# leaves line order intact, so the ordering check alone can't catch it — assert
+# every target explicitly. (Runtime can't tell these apart: without a JWT the
+# JWT-guarded services all return 401 regardless of which one answered.)
+for pair in \
+  override:emergency-service:9005 \
+  consent:consent-service:9000 \
+  audit:audit-service:9001 \
+  otp:notification-service:9004 \
+  emergency:emergency-service:9005 \
+  auth:auth-service:9006; do
+  name="${pair%%:*}"; want="${pair#*:}"
+  if grep -qE "reverse_proxy[[:space:]]+@${name}[[:space:]]+${want}" "$CADDYFILE"; then
+    echo "PASS: @${name} upstream is ${want}"
+  else
+    echo "FAIL: @${name} must proxy to ${want}"; fail=1
+  fi
+done
 
 # --- Runtime: edge blocks (status-distinguishable) ---
 expect "/internal/* blocked"          403 "$(code -X POST "$BASE/internal/audit/log")"
