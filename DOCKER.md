@@ -72,6 +72,23 @@ token and ship audit lazily with retries, so they tolerate auth/audit starting l
 Ports: auth `9006`, audit `9001`, notification `9004`, consent `9000`,
 emergency `9005`.
 
+## 2b. Single public entry point (gateway)
+
+All services also stay reachable on their own ports for dev/tests, but the
+**gateway** gives clients one public origin on `:8080` (`gateway/Caddyfile` is
+the route table; prod mirrors it at the ALB in P3):
+
+```bash
+cd gateway && docker compose up -d
+```
+
+- `/v1/auth/token` → auth · `/api/v1/consent/*` → consent (exact
+  `/api/v1/consent/emergency-override` → emergency) · `/api/v1/audit/*` → audit
+  · `/api/v1/otp/*` → notification · `/api/v1/emergency/*` → emergency ·
+  everything else → admin-bff (dashboard SPA + cookie session API).
+- `/internal/*` and `/v1/auth/service-token` return **403** at the edge.
+- Verify routing: `bash gateway/test-routes.sh`.
+
 ## 3. Stop
 
 ```bash

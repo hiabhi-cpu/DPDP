@@ -1,0 +1,25 @@
+# gateway — single public entry point (Caddy reverse proxy).
+# Requires the shared external dpdp-network and the services reachable on it
+# (see ../DOCKER.md). Caddy retries upstreams, so no hard depends_on is needed.
+# Run from this directory:  docker compose up -d
+services:
+  gateway:
+    image: caddy:2-alpine
+    container_name: dpdp-gateway
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
+    networks:
+      - dpdp-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+networks:
+  dpdp-network:
+    external: true

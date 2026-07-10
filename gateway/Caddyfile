@@ -1,0 +1,49 @@
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	# Security headers, set once at the edge for every response.
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	# ponytail: add a CORS block here when the first cross-origin client ships
+	# (hms-widget, P2). It also needs a frame policy — X-Frame-Options DENY
+	# above breaks iframe embedding, so the widget's route overrides it.
+
+	route {
+		# Gateway liveness, independent of any upstream.
+		respond /healthz 200
+
+		# Internal + service-JWT minting must never be reachable publicly.
+		@blocked path /internal/* /v1/auth/service-token
+		respond @blocked 403
+
+		# emergency-override MUST precede the /api/v1/consent/* prefix below.
+		@override path /api/v1/consent/emergency-override
+		reverse_proxy @override emergency-service:9005
+
+		@consent path /api/v1/consent/*
+		reverse_proxy @consent consent-service:9000
+
+		@audit path /api/v1/audit/*
+		reverse_proxy @audit audit-service:9001
+
+		@otp path /api/v1/otp/*
+		reverse_proxy @otp notification-service:9004
+
+		@emergency path /api/v1/emergency/*
+		reverse_proxy @emergency emergency-service:9005
+
+		@auth path /v1/auth/*
+		reverse_proxy @auth auth-service:9006
+
+		# Catch-all: dashboard SPA + BFF cookie /api/* session API.
+		reverse_proxy admin-bff:9007
+	}
+}
