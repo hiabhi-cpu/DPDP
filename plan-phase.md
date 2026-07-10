@@ -68,7 +68,7 @@ Done before Phase-2 so new services inherit corrected patterns. Full detail in
 | ✅➕ | BE | **OTP abuse protection** in notification-service — done (2026-07-07): 5-attempt verify cap (OTP burned on exceed), 60s resend cooldown + 5/hour per-mobile send cap (Redis), 429 responses; mock SMS log masks the mobile. |
 | ✅➕ | BE | **Consent writes gated on verified OTP session** — done (2026-07-07): `otp_verified=true` was written unconditionally with no check anywhere (verified sessions were stored in Redis but never read). notification-service now exposes `POST /internal/v1/otp/session/validate` (service-token auth); consent-service capture/withdraw/grant verify `session_id`+mobile against it before any vault write (403 on failure, fail-closed on outage). Idempotent replays still work after session expiry. |
 | ✅➕ | BE | **Security-review fixes (2026-07-07)** — spoofable audit IPs (all 5 services now `SetTrustedProxies(nil)`); artifact hash made re-verifiable (deterministic purpose serialization + hash computed over the *stored* `created_at`; was `%v` of a Go map + a discarded timestamp); audit-service no longer echoes internal errors and clamps `page`/`limit`; auth-service logs DB failures as 500 instead of masking as 401; constant-time API-key compare in `shared/crypto`. |
-| ⬜ | infra | **API gateway (dev) — single public entry point** (added 2026-07-08; was missing from every phase). Today each service exposes its own port (consent 9000 · audit 9001 · notification 9004 · emergency 9005 · auth 9006) and every client must know the topology. Add a reverse-proxy container (Caddy or nginx) in compose, one public port: `/v1/auth/*`→auth · exact `/api/v1/consent/emergency-override`→emergency (**must match before** the `/api/v1/consent/*`→consent prefix) · `/api/v1/consent/*`→consent · `/api/v1/audit/*`→audit · `/api/v1/otp/*`→notification · `/api/v1/emergency/*`→emergency. **`/internal/*` blocked at the edge** (service-token endpoints must never be public). CORS + security headers live here once, not per-service. The dashboard **BFF sits behind it** (BFF handles sessions/key custody; gateway handles topology); the kiosk gets one base URL instead of two. Ship with/just after the dashboard BFF. |
+| ✅ | infra | **API gateway (dev) — single public entry point** — **done (2026-07-10)**. `gateway/` Caddy container on one public port `:8080`, ordered route table: `/v1/auth/token`→auth · exact `/api/v1/consent/emergency-override`→emergency (matches **before** the `/api/v1/consent/*`→consent prefix) · `/api/v1/consent/*`→consent · `/api/v1/audit/*`→audit · `/api/v1/otp/*`→notification · `/api/v1/emergency/*`→emergency · catch-all→admin-bff (dashboard SPA + cookie `/api/*`). `/internal/*` **and** `/v1/auth/service-token` blocked at the edge (the raw plan's blanket `/v1/auth/*` would have exposed service-JWT minting — corrected). Security headers set once here; CORS + TLS deferred (marked for the P2 hms-widget / prod ALB). Per-service dev ports kept. `gateway/test-routes.sh` gates precedence + all six upstreams + edge-blocks (11/11 live). See `docs/superpowers/{specs/2026-07-09,plans/2026-07-10}-api-gateway*.md`. |
 | ⬜➕ | DB | **§9 schema groundwork** — vault columns for `data_principal_type` (ADULT / CHILD / GUARDIAN_CONSENT), guardian identity + relationship, and which mobile received the OTP. Migration is cheap now, painful after pilot data exists. Kiosk guardian *flow* is P2; hard gate before P3 real patients. |
 | ✅🔺 | infra | **Migration tooling** — pulled forward, done. `init/` retired → tracked migrations in `DPDP/scripts/db/migrations/` (0001–0010) + `public.schema_migrations`, run by `migrate.sh` (up/status/baseline/seed). Dev seed split out of the schema. Compose applies via a one-shot `migrate` service. Files are tool-agnostic SQL (goose swap-in later is mechanical). Verified: clean from-scratch apply + baseline of the existing volume. |
 
@@ -113,7 +113,7 @@ Ports: auth `9006` · consent `9000` · audit `9001` · emergency `9005`.
   the `role` column without a rewrite.
 
 **Phase-1 done when:** consent captured → vault written → audit logged → badge in dashboard. ✅ **met** — admin-dashboard live end-to-end.
-**Remaining P1:** the kiosk frontend + AWS Secrets Manager (still mock). The dev API gateway row above is optional/deferred (the BFF already gives the dashboard a same-origin API).
+**Remaining P1:** the kiosk frontend + AWS Secrets Manager (still mock). The dev API gateway row above is **done (2026-07-10)** — one public origin on `:8080` fronting all services + the BFF.
 
 ---
 
@@ -258,9 +258,8 @@ From a full-project review against the DPDP Act and the code. Rows marked ➕ ab
 5. ~~**First frontend** (`admin-dashboard`)~~ — ✅ **done (2026-07-09)**: admin-bff +
    React SPA (login · stats · audit · emergency review), named-user login,
    `GET /api/v1/consent/stats` built, audit `inet` bug fixed. Live-verified. The
-   **dev API gateway** was NOT shipped with it (deferred) — the BFF already gives the
-   dashboard a same-origin API; the gateway is only needed once the kiosk/widget/portal
-   need one public origin.
+   **dev API gateway** shipped just after, on 2026-07-10 (`gateway/`, Caddy `:8080`) —
+   one public origin fronting all services + the BFF, ready for the kiosk/widget/portal.
 6. ~~**➕ OTP abuse protection**~~ — ✅ done (2026-07-07), together with the
    security-review fixes (verified-OTP gating of consent writes, trusted-proxy
    hardening, re-verifiable artifact hashes).
