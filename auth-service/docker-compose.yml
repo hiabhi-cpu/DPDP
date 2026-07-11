@@ -21,6 +21,7 @@ services:
       - "9006:9006"
     volumes:
       - ./keys:/keys:ro
+      - /data/logs:/data/logs
     restart: unless-stopped
     networks:
       - dpdp-network

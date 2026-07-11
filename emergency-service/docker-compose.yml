@@ -23,6 +23,7 @@ services:
     volumes:
       - ../auth-service/keys:/keys:ro
       - ../DPDP/secrets:/secrets:ro
+      - /data/logs:/data/logs
     restart: unless-stopped
     networks:
       - dpdp-network

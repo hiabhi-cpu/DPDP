@@ -20,6 +20,7 @@ services:
       - "9004:9004"
     volumes:
       - ../auth-service/keys:/keys:ro
+      - /data/logs:/data/logs
     restart: unless-stopped
     networks:
       - dpdp-network
