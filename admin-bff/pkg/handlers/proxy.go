@@ -11,20 +11,20 @@ import (
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/hiabhi-cpu/admin-bff/pkg/auth"
 	bffmw "github.com/hiabhi-cpu/admin-bff/pkg/middleware"
 	"github.com/hiabhi-cpu/admin-bff/pkg/session"
+	"github.com/hiabhi-cpu/shared/hospitaljwt"
 )
 
 // Proxy forwards a request to one downstream service, attaching the hospital JWT.
 type Proxy struct {
 	base   string
-	token  auth.TokenProvider
+	token  hospitaljwt.TokenProvider
 	client *http.Client
 }
 
 // NewProxy builds a Proxy for the given downstream base URL.
-func NewProxy(base string, token auth.TokenProvider) *Proxy {
+func NewProxy(base string, token hospitaljwt.TokenProvider) *Proxy {
 	return &Proxy{base: base, token: token, client: &http.Client{Timeout: 10 * time.Second}}
 }
 

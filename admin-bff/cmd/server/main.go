@@ -19,6 +19,7 @@ import (
 	"github.com/hiabhi-cpu/admin-bff/pkg/httpx"
 	"github.com/hiabhi-cpu/admin-bff/pkg/routes"
 	"github.com/hiabhi-cpu/admin-bff/pkg/session"
+	"github.com/hiabhi-cpu/shared/hospitaljwt"
 	"github.com/hiabhi-cpu/shared/logging"
 )
 
@@ -36,7 +37,7 @@ func main() {
 	cookieCfg := httpx.CookieConfig{Secure: env.CookieSecure}
 	users := auth.NewUserRepository(db)
 	store := session.NewRedisStore(rdb, env.SessionTTL)
-	tokens := auth.NewHospitalTokenClient(env.AuthServiceURL, env.HospitalAPIKey)
+	tokens := hospitaljwt.NewHospitalTokenClient(env.AuthServiceURL, env.HospitalAPIKey)
 
 	deps := routes.Deps{
 		Auth:      handlers.NewAuthHandler(users, store, env.SessionTTL, cookieCfg),
