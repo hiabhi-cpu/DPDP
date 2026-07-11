@@ -57,14 +57,16 @@ unauthenticated public surface, and mixing a public patient endpoint into the ad
 service is a security smell. The kiosk-bff is separate but small: one handler file plus
 the JWT client below.
 
-### Reuse: import the existing token client, don't refactor
+### Reuse: promote the token client to `shared/hospitaljwt`
 
 `admin-bff/pkg/auth/token.go` already implements exactly the API-key→JWT exchange with
 near-expiry caching that the kiosk-bff needs (`HospitalTokenClient`, `TokenProvider`).
-`go.work` already unifies the modules, so **kiosk-bff imports `admin-bff/pkg/auth`
-directly** — zero changes to admin-bff, no duplication. Promote it to `shared/` **only
-if** that cross-module import turns ugly; don't pay for the refactor in P1 on
-speculation.
+Importing `admin-bff/pkg/auth` directly was the first choice, but that package also holds
+`user.go`/`password.go` — Go compiles the whole package, dragging admin-bff's Postgres +
+bcrypt deps into the kiosk-bff. That's the "turns ugly" case, so the token client (which
+depends only on `net/http`, `sync`, `encoding/json`) **moves to `shared/hospitaljwt`**
+alongside `shared/serviceauth`; admin-bff updates its one import site. Both BFFs then
+share one copy with no cross-service coupling.
 
 ## Kiosk flow (screens)
 
