@@ -120,6 +120,10 @@ Example after running audit-service:
 
 On container restart (`docker compose restart`), log files for the current day are rotated to `*-restarted-*`.
 
+**Observability caveat:** `app.log` is written to file only, not stdout. Startup/fatal errors (e.g. a failed JWT key load) are logged before gin starts, so `docker logs` will NOT show them — if a container won't stay up (crash-loop under `restart: unless-stopped`), tail `/data/logs/<service>/<yyyy-mm-dd>/app.log` to see the boot error. (`gin.log` does tee to stdout, but only carries HTTP access lines.)
+
+**Retention note:** logs are never auto-pruned; the dated directories accumulate over time. Periodically prune old `/data/logs/<service>/<date>/` directories if disk pressure appears.
+
 **Environment variables:**
 - `LOG_LEVEL`: Set logging verbosity (default `info`; use `trace` for verbose dev logging).
 - `LOG_DIR`: Set the logs base path (default `/data/logs`).

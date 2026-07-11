@@ -3,8 +3,12 @@ package logging
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 )
 
 func TestDailyWriterCreatesDatedFile(t *testing.T) {
@@ -55,5 +59,38 @@ func TestRotateAtStartupNoFileIsNoOp(t *testing.T) {
 	dir := t.TempDir()
 	if err := rotateAtStartup(dir, "app.log"); err != nil {
 		t.Fatalf("expected nil when file absent, got %v", err)
+	}
+}
+
+func TestSetupCreatesLogFiles(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("LOG_DIR", tmp)
+	t.Setenv("LOG_LEVEL", "info")
+
+	Setup("svc-test")
+
+	log.Info("app line")
+	if _, err := gin.DefaultWriter.Write([]byte("access\n")); err != nil {
+		t.Fatalf("gin write: %v", err)
+	}
+
+	today := time.Now().Format("2006-01-02")
+
+	appPath := filepath.Join(tmp, "svc-test", today, "app.log")
+	appBytes, err := os.ReadFile(appPath)
+	if err != nil {
+		t.Fatalf("expected app.log at %s: %v", appPath, err)
+	}
+	if !strings.Contains(string(appBytes), "app line") {
+		t.Fatalf("app.log missing expected content, got %q", appBytes)
+	}
+
+	ginPath := filepath.Join(tmp, "svc-test", today, "gin.log")
+	ginBytes, err := os.ReadFile(ginPath)
+	if err != nil {
+		t.Fatalf("expected gin.log at %s: %v", ginPath, err)
+	}
+	if !strings.Contains(string(ginBytes), "access") {
+		t.Fatalf("gin.log missing expected content, got %q", ginBytes)
 	}
 }

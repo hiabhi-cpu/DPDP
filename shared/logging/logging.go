@@ -41,7 +41,7 @@ func (w *dailyLumberjackWriter) Write(p []byte) (int, error) {
 		w.date = today
 
 		dayDir := filepath.Join(w.baseDir, today)
-		if err := os.MkdirAll(dayDir, os.ModePerm); err != nil {
+		if err := os.MkdirAll(dayDir, 0o750); err != nil {
 			return 0, err
 		}
 		w.current = &lumberjack.Logger{
@@ -97,7 +97,7 @@ func Setup(serviceName string) {
 	}
 	logDir := filepath.Join(baseDir, serviceName)
 
-	if err := os.MkdirAll(logDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(logDir, 0o750); err != nil {
 		log.Errorln("logging.Setup: cannot create log dir:", err)
 		return
 	}
