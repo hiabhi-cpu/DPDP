@@ -2,8 +2,9 @@ package service
 
 import (
 	"context"
-	"log"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // SMSClient abstracts the delivery mechanism for SMS.

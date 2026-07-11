@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/joho/godotenv/autoload"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hiabhi-cpu/consent-service/bootstrap"
 	"github.com/hiabhi-cpu/consent-service/pkg/consent/controller"
@@ -19,6 +19,7 @@ import (
 	"github.com/hiabhi-cpu/consent-service/pkg/consent/repository"
 	"github.com/hiabhi-cpu/consent-service/pkg/consent/service"
 	"github.com/hiabhi-cpu/consent-service/pkg/routes"
+	"github.com/hiabhi-cpu/shared/logging"
 	"github.com/hiabhi-cpu/shared/middleware"
 	"github.com/hiabhi-cpu/shared/secrets"
 	"github.com/hiabhi-cpu/shared/serviceauth"
@@ -28,6 +29,8 @@ import (
 const serviceName = "consent-service"
 
 func main() {
+	logging.Setup("consent-service")
+
 	ctx := context.Background()
 
 	env := bootstrap.NewEnv()

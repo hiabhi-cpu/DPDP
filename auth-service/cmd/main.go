@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/joho/godotenv/autoload" // auto-loads .env file
+	log "github.com/sirupsen/logrus"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/hiabhi-cpu/auth-service/bootstrap"
@@ -19,9 +19,12 @@ import (
 	"github.com/hiabhi-cpu/auth-service/pkg/auth/repository"
 	"github.com/hiabhi-cpu/auth-service/pkg/auth/service"
 	"github.com/hiabhi-cpu/auth-service/pkg/routes"
+	"github.com/hiabhi-cpu/shared/logging"
 )
 
 func main() {
+	logging.Setup("auth-service")
+
 	ctx := context.Background()
 
 	// ── 1. Load configuration ─────────────────────────────────────────────────

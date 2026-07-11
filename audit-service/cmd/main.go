@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,16 +11,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/joho/godotenv/autoload"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hiabhi-cpu/audit-service/bootstrap"
 	"github.com/hiabhi-cpu/audit-service/pkg/audit/controller"
 	"github.com/hiabhi-cpu/audit-service/pkg/audit/repository"
 	"github.com/hiabhi-cpu/audit-service/pkg/audit/service"
 	"github.com/hiabhi-cpu/audit-service/pkg/routes"
+	"github.com/hiabhi-cpu/shared/logging"
 	"github.com/hiabhi-cpu/shared/middleware"
 )
 
 func main() {
+	logging.Setup("audit-service")
+
 	ctx := context.Background()
 
 	env := bootstrap.NewEnv()

@@ -5,8 +5,9 @@ package outbox
 
 import (
 	"context"
-	"log"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hiabhi-cpu/consent-service/pkg/consent/repository"
 	"github.com/hiabhi-cpu/consent-service/pkg/consent/service"

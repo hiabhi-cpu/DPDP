@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/joho/godotenv/autoload"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hiabhi-cpu/admin-bff/bootstrap"
 	"github.com/hiabhi-cpu/admin-bff/pkg/auth"
@@ -19,9 +19,12 @@ import (
 	"github.com/hiabhi-cpu/admin-bff/pkg/httpx"
 	"github.com/hiabhi-cpu/admin-bff/pkg/routes"
 	"github.com/hiabhi-cpu/admin-bff/pkg/session"
+	"github.com/hiabhi-cpu/shared/logging"
 )
 
 func main() {
+	logging.Setup("admin-bff")
+
 	ctx := context.Background()
 	env := bootstrap.NewEnv()
 

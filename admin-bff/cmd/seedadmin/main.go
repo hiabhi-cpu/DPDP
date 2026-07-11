@@ -6,10 +6,10 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hiabhi-cpu/admin-bff/pkg/auth"
 )

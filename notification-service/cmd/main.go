@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,16 +11,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/joho/godotenv/autoload"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hiabhi-cpu/notification-service/bootstrap"
 	"github.com/hiabhi-cpu/notification-service/pkg/otp/controller"
 	"github.com/hiabhi-cpu/notification-service/pkg/otp/repository"
 	"github.com/hiabhi-cpu/notification-service/pkg/otp/service"
 	"github.com/hiabhi-cpu/notification-service/pkg/routes"
+	"github.com/hiabhi-cpu/shared/logging"
 	"github.com/hiabhi-cpu/shared/middleware"
 )
 
 func main() {
+	logging.Setup("notification-service")
+
 	ctx := context.Background()
 
 	env := bootstrap.NewEnv()

@@ -1,12 +1,13 @@
 package controller
 
 import (
-	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
+
 	"github.com/hiabhi-cpu/audit-service/pkg/audit/model"
 	"github.com/hiabhi-cpu/audit-service/pkg/audit/service"
 	"github.com/hiabhi-cpu/shared/middleware"
