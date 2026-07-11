@@ -5,12 +5,13 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	log "github.com/sirupsen/logrus"
+
 	sharedcrypto "github.com/hiabhi-cpu/shared/crypto"
 	"github.com/hiabhi-cpu/shared/middleware"
 

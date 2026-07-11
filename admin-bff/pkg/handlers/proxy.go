@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hiabhi-cpu/admin-bff/pkg/auth"
 	bffmw "github.com/hiabhi-cpu/admin-bff/pkg/middleware"

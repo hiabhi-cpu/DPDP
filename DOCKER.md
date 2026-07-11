@@ -98,6 +98,36 @@ docker volume rm dpdp_postgres_data          # wipe DB (re-run migrate.sh after)
 docker network rm dpdp-network               # remove the shared network
 ```
 
+## 4. Log volume
+
+All services bind-mount the host `/data/logs` directory for persistent application logs:
+
+```bash
+sudo mkdir -p /data/logs
+sudo chown -R 1000:1000 /data/logs
+```
+
+Run this one-time setup before the first `docker compose up`. Logs are written to:
+```
+/data/logs/<service-name>/<yyyy-mm-dd>/{app.log,gin.log}
+```
+
+Example after running audit-service:
+```
+/data/logs/audit-service/2025-07-11/app.log      # application startup logs
+/data/logs/audit-service/2025-07-11/gin.log      # HTTP request logs (also tees to stdout)
+```
+
+On container restart (`docker compose restart`), log files for the current day are rotated to `*-restarted-*`.
+
+**Observability caveat:** `app.log` is written to file only, not stdout. Startup/fatal errors (e.g. a failed JWT key load) are logged before gin starts, so `docker logs` will NOT show them — if a container won't stay up (crash-loop under `restart: unless-stopped`), tail `/data/logs/<service>/<yyyy-mm-dd>/app.log` to see the boot error. (`gin.log` does tee to stdout, but only carries HTTP access lines.)
+
+**Retention note:** logs are never auto-pruned; the dated directories accumulate over time. Periodically prune old `/data/logs/<service>/<date>/` directories if disk pressure appears.
+
+**Environment variables:**
+- `LOG_LEVEL`: Set logging verbosity (default `info`; use `trace` for verbose dev logging).
+- `LOG_DIR`: Set the logs base path (default `/data/logs`).
+
 ## Notes
 
 - **Build context** is the repo root (`context: ..`) so the `replace ../shared`

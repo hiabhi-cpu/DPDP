@@ -23,6 +23,8 @@ services:
       COOKIE_SECURE: "false"
     ports:
       - "9007:9007"
+    volumes:
+      - /data/logs:/data/logs
     restart: unless-stopped
     networks:
       - dpdp-network

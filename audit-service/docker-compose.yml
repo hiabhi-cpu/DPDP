@@ -17,6 +17,7 @@ services:
       - "9001:9001"
     volumes:
       - ../auth-service/keys:/keys:ro
+      - /data/logs:/data/logs
     restart: unless-stopped
     networks:
       - dpdp-network
