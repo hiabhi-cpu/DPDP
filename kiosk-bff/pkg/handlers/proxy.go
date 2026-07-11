@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"time"
@@ -58,3 +59,10 @@ func (p *Proxy) ForwardPost(c *gin.Context, downstreamPath string) {
 	}
 	c.Data(resp.StatusCode, ct, body)
 }
+
+// StubProvider returns a TokenProvider that always yields tok (test helper).
+func StubProvider(tok string) hospitaljwt.TokenProvider { return stubProvider(tok) }
+
+type stubProvider string
+
+func (s stubProvider) Token(_ context.Context) (string, error) { return string(s), nil }

@@ -43,6 +43,9 @@
 		@auth path /v1/auth/*
 		reverse_proxy @auth auth-service:9006
 
+		@kiosk path /kiosk/*
+		reverse_proxy @kiosk kiosk-bff:9008
+
 		# Catch-all: dashboard SPA + BFF cookie /api/* session API.
 		reverse_proxy admin-bff:9007
 	}

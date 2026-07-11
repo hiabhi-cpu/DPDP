@@ -1,0 +1,34 @@
+# kiosk-bff — standalone compose (polyrepo style).
+# Requires the shared external dpdp-network with auth/notification/consent
+# services reachable on it — see ../DOCKER.md.
+# Run from this directory:  docker compose up -d --build
+# Build context is the repo root (..) because go.mod uses `replace ../shared`.
+services:
+  kiosk-bff:
+    container_name: dpdp-kiosk-bff
+    build:
+      context: ..
+      dockerfile: kiosk-bff/Dockerfile
+    environment:
+      KIOSK_BFF_PORT: "9008"
+      HOSPITAL_API_KEY: ${HOSPITAL_API_KEY:-TEST-HOSPITAL-API-KEY-LOCAL-DEV-001}
+      AUTH_SERVICE_URL: "http://auth-service:9006"
+      NOTIFICATION_SERVICE_URL: "http://notification-service:9004"
+      CONSENT_SERVICE_URL: "http://consent-service:9000"
+    ports:
+      - "9008:9008"
+    volumes:
+      - /data/logs:/data/logs
+    restart: unless-stopped
+    networks:
+      - dpdp-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9008/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+networks:
+  dpdp-network:
+    external: true

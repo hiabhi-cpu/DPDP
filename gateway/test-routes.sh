@@ -32,7 +32,8 @@ for pair in \
   audit:audit-service:9001 \
   otp:notification-service:9004 \
   emergency:emergency-service:9005 \
-  auth:auth-service:9006; do
+  auth:auth-service:9006 \
+  kiosk:kiosk-bff:9008; do
   name="${pair%%:*}"; want="${pair#*:}"
   if grep -qE "reverse_proxy[[:space:]]+@${name}[[:space:]]+${want}" "$CADDYFILE"; then
     echo "PASS: @${name} upstream is ${want}"
@@ -52,6 +53,18 @@ expect "catch-all reaches BFF (/health)" 200 "$(code "$BASE/health")"
 # Asserting 400 exactly proves it reached auth's handler — not a 404 from a wrong
 # upstream, a 403 edge-block, or a 502 from auth being unreachable.
 expect "/v1/auth/token reaches auth" 400 "$(code -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/v1/auth/token")"
+
+# /kiosk/api/otp/send is routed by @kiosk to kiosk-bff, which proxies on to
+# notification-service. We don't know the exact downstream status (depends on
+# auth/notification wiring), so just assert it's not a 404 — a 404 here would
+# mean @kiosk isn't matching and the request fell through to the admin-bff
+# catch-all instead.
+kiosk_code="$(code -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/kiosk/api/otp/send")"
+if [ "$kiosk_code" != 404 ]; then
+  echo "PASS: /kiosk/api/otp/send reaches kiosk-bff (not 404, got $kiosk_code)"
+else
+  echo "FAIL: /kiosk/api/otp/send returned 404 — @kiosk route not matching"; fail=1
+fi
 
 [ "$fail" = 0 ] && echo "ALL PASS" || echo "FAILURES"
 exit $fail
