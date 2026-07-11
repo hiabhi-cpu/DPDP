@@ -57,13 +57,14 @@ unauthenticated public surface, and mixing a public patient endpoint into the ad
 service is a security smell. The kiosk-bff is separate but small: one handler file plus
 the JWT client below.
 
-### Reuse: promote the token client to `shared/`
+### Reuse: import the existing token client, don't refactor
 
 `admin-bff/pkg/auth/token.go` already implements exactly the API-key→JWT exchange with
 near-expiry caching that the kiosk-bff needs (`HospitalTokenClient`, `TokenProvider`).
-Promote it to `shared/` (alongside `shared/serviceauth`, `shared/crypto`) so both BFFs
-depend on one copy instead of duplicating it. Update `admin-bff` to import the shared
-version. This is a small, in-scope refactor — the work touches the code anyway.
+`go.work` already unifies the modules, so **kiosk-bff imports `admin-bff/pkg/auth`
+directly** — zero changes to admin-bff, no duplication. Promote it to `shared/` **only
+if** that cross-module import turns ugly; don't pay for the refactor in P1 on
+speculation.
 
 ## Kiosk flow (screens)
 
@@ -73,7 +74,10 @@ Single-column wizard, one step per screen:
 2. **Mobile entry** — patient types mobile → `POST /kiosk/api/otp/send`.
 3. **OTP verify** — 6-digit entry → `POST /kiosk/api/otp/verify` → receives `session_id`.
 4. **Consent notice + purposes** — shows §5 notice text + per-purpose grant/decline
-   toggles (per-purpose consent already modelled in the vault).
+   toggles (per-purpose consent already modelled in the vault). Notice text + purpose
+   list are **bundled in the PWA at build time** in P1 (a static JSON import) — no
+   endpoint. A dynamic notice endpoint arrives in P2 when content becomes
+   multi-language/managed.
 5. **Confirm** → `POST /kiosk/api/consent/capture` (with `session_id`) → **done screen**,
    then **auto-reset to step 1 after a timeout** so no patient data is left on a shared
    kiosk screen.
@@ -92,10 +96,10 @@ returns) surface inline with a retry, no crash. **No guardian/§9 branch** (P2).
   OS; on iPhone, Safari rides iOS updates that reach ~6-year-old hardware — so a
   "5-year-old device" is fine *as long as its browser is current*. Set a `browserslist`
   floor (≈2021+ evergreen, Vite's default territory) and avoid bleeding-edge JS/CSS.
-- **Ancient-browser fallback.** For a genuinely abandoned device stuck on an old stock
-  browser: detect and show a graceful "please update your browser" screen instead of a
-  blank crash. We do **not** polyfill for dead browsers (`ponytail:` detect-and-tell, not
-  polyfill).
+- **Ancient-browser fallback.** No detection code and no polyfills. Vite emits
+  `<script type="module">`; browsers too old to run the app skip module scripts natively,
+  so a plain `<script nomodule>` (or static markup) shows a "please update your browser"
+  message for free. `ponytail:` the module/nomodule split *is* the detection.
 - **PWA installability** — a web manifest so a hospital can "add to home screen" for a
   fullscreen kiosk look. **No service worker in P1** (offline is P2); the manifest alone
   is one file.
@@ -109,7 +113,6 @@ every upstream call.
 |---|---|---|
 | `POST /kiosk/api/otp/send` `{mobile}` | notification send | rate-limit 429s pass through |
 | `POST /kiosk/api/otp/verify` `{mobile, otp}` | notification verify | returns `{session_id}` |
-| `GET  /kiosk/api/notice` | (static/config in P1) | notice text + purpose list |
 | `POST /kiosk/api/consent/capture` `{session_id, mobile, purposes[]}` | consent capture | |
 | `GET  /kiosk/*` | static PWA build | serves the responsive app, same origin |
 
@@ -142,4 +145,4 @@ makes only same-origin calls. `gateway/test-routes.sh` gains a case for the kios
 - §9 age-gate + guardian identity + OTP-to-guardian minor path (P2).
 - Per-device provisioning / rotating device credentials (P2).
 - Multi-language notice text and UI (P2 / P4).
-- Real notice-text content management (P1 uses static/config).
+- Dynamic notice endpoint / content management (P1 bundles static notice text in the PWA).
