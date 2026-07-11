@@ -69,7 +69,7 @@ Done before Phase-2 so new services inherit corrected patterns. Full detail in
 | ✅➕ | BE | **Consent writes gated on verified OTP session** — done (2026-07-07): `otp_verified=true` was written unconditionally with no check anywhere (verified sessions were stored in Redis but never read). notification-service now exposes `POST /internal/v1/otp/session/validate` (service-token auth); consent-service capture/withdraw/grant verify `session_id`+mobile against it before any vault write (403 on failure, fail-closed on outage). Idempotent replays still work after session expiry. |
 | ✅➕ | BE | **Security-review fixes (2026-07-07)** — spoofable audit IPs (all 5 services now `SetTrustedProxies(nil)`); artifact hash made re-verifiable (deterministic purpose serialization + hash computed over the *stored* `created_at`; was `%v` of a Go map + a discarded timestamp); audit-service no longer echoes internal errors and clamps `page`/`limit`; auth-service logs DB failures as 500 instead of masking as 401; constant-time API-key compare in `shared/crypto`. |
 | ✅ | infra | **API gateway (dev) — single public entry point** — **done (2026-07-10)**. `gateway/` Caddy container on one public port `:8080`, ordered route table: `/v1/auth/token`→auth · exact `/api/v1/consent/emergency-override`→emergency (matches **before** the `/api/v1/consent/*`→consent prefix) · `/api/v1/consent/*`→consent · `/api/v1/audit/*`→audit · `/api/v1/otp/*`→notification · `/api/v1/emergency/*`→emergency · catch-all→admin-bff (dashboard SPA + cookie `/api/*`). `/internal/*` **and** `/v1/auth/service-token` blocked at the edge (the raw plan's blanket `/v1/auth/*` would have exposed service-JWT minting — corrected). Security headers set once here; CORS + TLS deferred (marked for the P2 hms-widget / prod ALB). Per-service dev ports kept. `gateway/test-routes.sh` gates precedence + all six upstreams + edge-blocks (11/11 live). See `docs/superpowers/{specs/2026-07-09,plans/2026-07-10}-api-gateway*.md`. |
-| ⬜➕ | DB | **§9 schema groundwork** — vault columns for `data_principal_type` (ADULT / CHILD / GUARDIAN_CONSENT), guardian identity + relationship, and which mobile received the OTP. Migration is cheap now, painful after pilot data exists. Kiosk guardian *flow* is P2; hard gate before P3 real patients. |
+| ✅➕ | DB | **§9 schema groundwork** — **done (2026-07-11)**. Migration `0013_section9_guardian.sql` adds `data_principal_type` (ADULT / CHILD — guardian consent implied by `guardian_key IS NOT NULL`, not a third enum value), `guardian_relationship`, `guardian_key` (HMAC, **same scheme as `patient_key`** — no raw guardian mobile in the vault), and `otp_mobile_owner` (SELF / GUARDIAN). All nullable-or-defaulted → existing rows read as ADULT/SELF, no data migration. Cross-column CHECK + index deferred to the P2 flow (write path not yet known). Kiosk guardian *flow* is P2; hard gate before P3 real patients. See `docs/superpowers/specs/2026-07-11-section9-schema-groundwork-design.md`. |
 | ✅🔺 | infra | **Migration tooling** — pulled forward, done. `init/` retired → tracked migrations in `DPDP/scripts/db/migrations/` (0001–0010) + `public.schema_migrations`, run by `migrate.sh` (up/status/baseline/seed). Dev seed split out of the schema. Compose applies via a one-shot `migrate` service. Files are tool-agnostic SQL (goose swap-in later is mechanical). Verified: clean from-scratch apply + baseline of the existing volume. |
 
 > **Note — API-key hashing.** The original plan says bcrypt; the build uses SHA-256
@@ -231,7 +231,7 @@ From a full-project review against the DPDP Act and the code. Rows marked ➕ ab
 |---|---|---|
 | Monorepo consolidation — ✅ done | P1 (now) | Was 7 disconnected single-commit repos + untracked docs; everything downstream assumes one history |
 | OTP abuse protection — ✅ done | P1 | Verify cap + resend cooldown + hourly cap shipped 2026-07-07 |
-| §9 children/guardian — schema | P1 | Cheap before data exists, painful after |
+| §9 children/guardian — schema — ✅ done | P1 | Cheap before data exists, painful after (migration `0013`, 2026-07-11) |
 | Named-user login (dashboard) — ✅ done | P1 | `auth.admin_users` + admin-bff login shipped 2026-07-09 |
 | Consent-check fail-open/closed policy | P2 | Must precede hms-widget |
 | §9 guardian flow (kiosk) | P2 | Hard gate before real patients |
@@ -263,5 +263,5 @@ From a full-project review against the DPDP Act and the code. Rows marked ➕ ab
 6. ~~**➕ OTP abuse protection**~~ — ✅ done (2026-07-07), together with the
    security-review fixes (verified-OTP gating of consent writes, trusted-proxy
    hardening, re-verifiable artifact hashes).
-7. **➕ §9 schema migration** — one migration file now saves a pilot-data
-   migration later; the kiosk guardian flow (P2) depends on it.
+7. ~~**➕ §9 schema migration**~~ — ✅ done (2026-07-11, migration `0013`); the
+   kiosk guardian flow (P2) now has columns to write to.
