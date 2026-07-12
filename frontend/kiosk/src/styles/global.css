@@ -1,0 +1,49 @@
+:root {
+  --gap: clamp(0.75rem, 2vw, 1.5rem);
+  --fs: clamp(1rem, 1rem + 0.5vw, 1.25rem);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+
+.shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gap);
+}
+
+.card {
+  width: 100%;
+  max-width: 34rem; /* relative cap, still fluid below it */
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  font-size: var(--fs);
+}
+
+.card h1, .card h2 { margin: 0; }
+
+input[type="text"], input[type="tel"], input:not([type="checkbox"]) {
+  width: 100%;
+  min-height: 44px;
+  font-size: var(--fs);
+  padding: 0.5rem 0.75rem;
+}
+
+button.primary {
+  min-height: 48px;
+  font-size: var(--fs);
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+}
+
+.purposes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--gap); }
+.purposes label { display: flex; gap: 0.75rem; align-items: flex-start; min-height: 44px; }
+.purposes input[type="checkbox"] { width: 1.5rem; height: 1.5rem; margin-top: 0.15rem; }
+
+.error { color: #b00020; margin: 0; }
+.notice { line-height: 1.5; }
