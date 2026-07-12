@@ -47,7 +47,7 @@ Done before Phase-2 so new services inherit corrected patterns. Full detail in
 
 ---
 
-## Phase 1 · Foundation — 🟡 backend + admin-dashboard done; kiosk not started
+## Phase 1 · Foundation — 🟡 backend + admin-dashboard + kiosk done; only AWS Secrets Manager (mock) remains
 
 **Goal:** Full consent flow working locally with a test hospital.
 
@@ -62,7 +62,7 @@ Done before Phase-2 so new services inherit corrected patterns. Full detail in
 | 🟡 | infra | Secrets: `SYSTEM_SALT` + per-hospital key — **local/env mock only**; AWS Secrets Manager not wired |
 | ✅ | BE | Patient-key HMAC util in `shared/crypto` (double-keyed, `v1|` versioned) |
 | ✅ | FE | `frontend/admin-dashboard/` — **done (2026-07-09)**: Vite+React+TS SPA (login · consent-stats dashboard w/ charts · audit view w/ filter+pagination · emergency review queue), fronted by a new Go **`admin-bff/`** that keeps the hospital API key + JWT server-side and gives the browser a same-origin session-cookie API (bcrypt login vs new `auth.admin_users`, Redis sessions, double-submit CSRF, JWT-injecting reverse proxy, server-injected emergency `reviewer_id`). Built the new `GET /api/v1/consent/stats` aggregate; fixed a pre-existing audit-service `inet`→string scan bug that 500'd `GET /api/v1/audit/logs`. Full-stack live-verified end-to-end; TDD throughout. See `docs/superpowers/{specs,plans}/2026-07-08-admin-dashboard-*.md`. |
-| ⬜ | mobile | `frontend/kiosk/` — React Native Expo, online OTP + consent form |
+| ✅ | mobile | `frontend/kiosk/` — **done (2026-07-12)**. Pivoted from React Native Expo to a **responsive PWA** (Vite+React+TS, same stack as admin-dashboard) so it runs from a URL on any Android/iPhone/kiosk browser (fluid `clamp()` layout, ≥44px targets, `nomodule` old-browser fallback, installable manifest) — no app store, no Apple account, works on ~5-yr-old devices. Fronted by a new stateless **`kiosk-bff/`** (port 9008) that keeps the hospital API key server-side and mints/attaches the hospital JWT, proxying OTP send/verify + per-purpose consent capture; gateway routes `/kiosk/*` to it. Token client promoted to `shared/hospitaljwt` (shared with admin-bff). Live-verified end-to-end through the gateway (send→verify→capture→201 vault row). §9 guardian flow, offline queue, per-device identity, and multi-language remain P2. See `docs/superpowers/{specs,plans}/2026-07-12-kiosk-p1-online*.md`. |
 | ✅🔺 | test | **Tenant-isolation test suite** — pulled forward from Phase 3, now written & green (`consent-service/test/`, 6 cases: read isolation, fail-closed, bogus context, append-only ×2, role-not-privileged). Build-tagged `integration`; run via `test/run-isolation.sh`. **CI wiring still pending (Phase 3).** |
 | ✅➕ | infra | **Monorepo consolidation** — was 7 single-commit per-service repos + untracked root docs, with `replace ../shared` coupling across repo boundaries. Now one root repo (`main`), root `.gitignore` + `go.work`; nested `.git` dirs backed up then removed. One CI pipeline in P3 instead of seven. |
 | ✅➕ | BE | **OTP abuse protection** in notification-service — done (2026-07-07): 5-attempt verify cap (OTP burned on exceed), 60s resend cooldown + 5/hour per-mobile send cap (Redis), 429 responses; mock SMS log masks the mobile. |
@@ -113,7 +113,7 @@ Ports: auth `9006` · consent `9000` · audit `9001` · emergency `9005`.
   the `role` column without a rewrite.
 
 **Phase-1 done when:** consent captured → vault written → audit logged → badge in dashboard. ✅ **met** — admin-dashboard live end-to-end.
-**Remaining P1:** the kiosk frontend + AWS Secrets Manager (still mock). The dev API gateway row above is **done (2026-07-10)** — one public origin on `:8080` fronting all services + the BFF.
+**Remaining P1:** AWS Secrets Manager (still mock). The kiosk frontend is **done (2026-07-12)** — responsive PWA + `kiosk-bff`, live-verified end-to-end (row above). The dev API gateway is **done (2026-07-10)** — one public origin on `:8080` fronting all services + both BFFs.
 
 ---
 
