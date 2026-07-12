@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -31,16 +32,34 @@ func Setup(r *gin.Engine, d Deps) {
 	}
 
 	if d.StaticDir != "" {
-		// Serve built assets and index.html under /kiosk/. SPA fallback: any
-		// unmatched /kiosk/* GET returns index.html so client routing works.
-		r.Static("/kiosk/assets", filepath.Join(d.StaticDir, "assets"))
-		index := filepath.Join(d.StaticDir, "index.html")
+		// Serve built assets, index.html, and Vite public/ passthrough files
+		// (manifest.webmanifest, favicon.svg, ...) under /kiosk/. Any request
+		// under /kiosk that maps to a real file in StaticDir gets that file;
+		// everything else (client routes) falls back to index.html so SPA
+		// routing works.
+		staticDir, err := filepath.Abs(d.StaticDir)
+		if err != nil {
+			staticDir = d.StaticDir
+		}
+		index := filepath.Join(staticDir, "index.html")
 		serveIndex := func(c *gin.Context) { c.File(index) }
-		r.GET("/kiosk", serveIndex)
+		serve := func(c *gin.Context) {
+			rel := strings.TrimPrefix(c.Request.URL.Path, "/kiosk")
+			candidate := filepath.Join(staticDir, rel) // filepath.Join cleans the result
+			// ponytail: prefix check on the cleaned absolute path is the guard —
+			// blocks /kiosk/../../etc/passwd-style escapes from StaticDir.
+			if candidate == staticDir || strings.HasPrefix(candidate, staticDir+string(filepath.Separator)) {
+				if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
+					c.File(candidate)
+					return
+				}
+			}
+			serveIndex(c)
+		}
 		r.NoRoute(func(c *gin.Context) {
 			if c.Request.Method == http.MethodGet &&
 				(strings.HasPrefix(c.Request.URL.Path, "/kiosk/") || c.Request.URL.Path == "/kiosk") {
-				serveIndex(c)
+				serve(c)
 				return
 			}
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
