@@ -1,0 +1,10 @@
+{
+  "name": "DPDP Consent",
+  "short_name": "Consent",
+  "start_url": "/kiosk/",
+  "scope": "/kiosk/",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#00bb55"
+}

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/kiosk/favicon.svg" />
+    <link rel="manifest" href="/kiosk/manifest.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b5" />
+    <title>Consent</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Please enable JavaScript to give consent.</noscript>
+    <script nomodule>
+      document.body.innerHTML =
+        '<div style="font-family:sans-serif;padding:2rem;text-align:center">' +
+        'Your browser is out of date. Please update it or use a newer device to continue.</div>';
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
