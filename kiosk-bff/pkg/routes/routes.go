@@ -3,6 +3,7 @@ package routes
 import (
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -38,7 +39,7 @@ func Setup(r *gin.Engine, d Deps) {
 		r.GET("/kiosk", serveIndex)
 		r.NoRoute(func(c *gin.Context) {
 			if c.Request.Method == http.MethodGet &&
-				len(c.Request.URL.Path) >= 6 && c.Request.URL.Path[:6] == "/kiosk" {
+				(strings.HasPrefix(c.Request.URL.Path, "/kiosk/") || c.Request.URL.Path == "/kiosk") {
 				serveIndex(c)
 				return
 			}

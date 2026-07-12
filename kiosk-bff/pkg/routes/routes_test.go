@@ -3,6 +3,8 @@ package routes
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -54,5 +56,46 @@ func TestRoutesReachUpstream(t *testing.T) {
 		if !found {
 			t.Fatalf("%s did not reach upstream %s; hits=%v", path, wantUpstream, hits)
 		}
+	}
+}
+
+func TestSPAFallbackWithStaticServing(t *testing.T) {
+	tmpDir := t.TempDir()
+	indexContent := "<!DOCTYPE html><html><body>Kiosk App</body></html>"
+	if err := os.WriteFile(filepath.Join(tmpDir, "index.html"), []byte(indexContent), 0o644); err != nil {
+		t.Fatalf("failed to write index.html: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	tp := handlers.StubProvider("test-jwt")
+	Setup(r, Deps{
+		OTP:       handlers.NewProxy(upstream.URL, tp),
+		Consent:   handlers.NewProxy(upstream.URL, tp),
+		StaticDir: tmpDir,
+	})
+
+	// Test: GET /kiosk/dashboard (SPA route) returns 200 and serves index.html
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/kiosk/dashboard", http.NoBody)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /kiosk/dashboard returned %d, want 200", w.Code)
+	}
+	if body := w.Body.String(); body != indexContent {
+		t.Fatalf("GET /kiosk/dashboard returned %q, want %q", body, indexContent)
+	}
+
+	// Test: GET /kioskxyz returns 404 (not the index, wrong prefix boundary)
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/kioskxyz", http.NoBody)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("GET /kioskxyz returned %d, want 404", w.Code)
 	}
 }
