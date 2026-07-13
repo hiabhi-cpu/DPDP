@@ -123,8 +123,9 @@ Ports: auth `9006` · consent `9000` · audit `9001` · emergency `9005`.
 
 | Status | Tag | Task |
 |---|---|---|
-| ⬜ | BE | `integration-service` — generic webhook receiver (`POST /webhook/patient-registered`), **mTLS** |
-| ⬜ | BE | Bahmni adapter — map Bahmni patient payload → our schema |
+| ⬜ | BE | **`integration-service` (Spec A of 2)** — mTLS webhook receiver (`POST /webhook/patient-registered`, own client-cert listener, `hospital_id` from cert CN) + Bahmni adapter + Redis pending-registration store (`pending:{hospital}:{hms_id}`, 72h TTL, idempotent) + consumer-agnostic internal read API (list + get-by-hms). Pre-stages identity only — **no vault write**. Self-contained & testable alone. See `docs/superpowers/specs/2026-07-13-integration-service-webhook-design.md`. |
+| ⬜ | BE/FE | **Front-desk-driven consent flow (Spec B of 2)** — consumes Spec A. Reception role + "Awaiting consent" queue in admin-dashboard (via admin-bff) → staff fires OTP → patient completes at any kiosk by entering the SMS code (code selects + proves their record; no per-kiosk device identity needed, no wrong-patient risk). Own design/plan; can't be tested without Spec A, so A ships first. **Why split from the row above:** the webhook (A) is pure backend/one service; the consent workflow (B) spans admin-bff, admin-dashboard, kiosk-bff + PWA with its own questions (claim-code mechanics, reception RBAC). |
+| — | — | ~~Bahmni adapter (separate row)~~ — **folded into Spec A above** (a generic receiver isn't testable without one concrete mapping). |
 | ⬜ | mobile | Kiosk offline mode — WatermelonDB SQLite queue, idempotency keys, auto-sync on reconnect (server side already idempotent via #8) |
 | ⬜ | FE | `frontend/hms-widget/` — vanilla JS <50KB, PostMessage, green/yellow/red badge |
 | ✅🔺 | BE | `emergency-service` — `POST /v1/consent/emergency-override` (always allowed, never blocks), immutable `EMERGENCY_OVERRIDE` vault row (§7(b), `legal_basis=DPDP_SECTION_7B`, identity optional), own transactional outbox+relay. Steps 5–6 (patient-notify SMS, retrospective consent) deferred. |
