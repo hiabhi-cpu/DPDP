@@ -35,7 +35,7 @@ func FromBahmni(body []byte, hospitalID string, now time.Time) (model.PendingReg
 	}
 	mobile := normalizeMobile(p.PhoneNumber)
 	if len(mobile) != 10 {
-		return model.PendingRegistration{}, fmt.Errorf("adapter: phoneNumber must normalize to 10 digits, got %q", mobile)
+		return model.PendingRegistration{}, fmt.Errorf("adapter: phoneNumber must normalize to 10 digits, got %d", len(mobile))
 	}
 	name := strings.TrimSpace(p.GivenName + " " + p.FamilyName)
 	if name == "" {
