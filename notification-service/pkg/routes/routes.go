@@ -25,6 +25,13 @@ func Setup(r *gin.Engine, otpHandler *controller.OTPHandler, pubKey *rsa.PublicK
 		}
 	}
 
+	claim := r.Group("/internal/v1/otp/claim")
+	claim.Use(middleware.JWTAuth(pubKey))
+	{
+		claim.POST("/send", otpHandler.ClaimSend)
+		claim.POST("/resolve", otpHandler.ClaimResolve)
+	}
+
 	api := r.Group("/api")
 	api.Use(middleware.JWTAuth(pubKey))
 	{
