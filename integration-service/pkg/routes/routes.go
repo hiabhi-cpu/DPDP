@@ -29,6 +29,7 @@ func SetupInternal(r *gin.Engine, read *controller.ReadHandler, pubKey *rsa.Publ
 	{
 		grp.GET("/registrations", read.List)
 		grp.GET("/registrations/:hms_patient_id", read.Get)
+		grp.POST("/registrations/:hms_patient_id/status", read.SetStatus)
 	}
 }
 

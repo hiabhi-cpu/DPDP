@@ -19,6 +19,9 @@ type Deps struct {
 	Consent   *handlers.Proxy
 	Audit     *handlers.Proxy
 	Emergency *handlers.Proxy
+
+	Integration *handlers.Proxy
+	Reception   *handlers.ReceptionHandler
 }
 
 // Setup registers all BFF routes.
@@ -41,10 +44,22 @@ func Setup(r *gin.Engine, d Deps) {
 		authed.Use(bffmw.RequireSession(d.Store))
 		{
 			authed.GET("/me", d.Auth.Me)
-			authed.GET("/consent/stats", func(c *gin.Context) { d.Consent.ForwardGet(c, "/api/v1/consent/stats") })
-			authed.GET("/audit/logs", func(c *gin.Context) { d.Audit.ForwardGet(c, "/api/v1/audit/logs") })
-			authed.GET("/emergency/pending", func(c *gin.Context) { d.Emergency.ForwardGet(c, "/api/v1/emergency/pending") })
-			authed.POST("/emergency/:id/review", d.Emergency.ForwardReview)
+
+			staff := authed.Group("")
+			staff.Use(bffmw.RequireRole("admin", "dpo"))
+			{
+				staff.GET("/consent/stats", func(c *gin.Context) { d.Consent.ForwardGet(c, "/api/v1/consent/stats") })
+				staff.GET("/audit/logs", func(c *gin.Context) { d.Audit.ForwardGet(c, "/api/v1/audit/logs") })
+				staff.GET("/emergency/pending", func(c *gin.Context) { d.Emergency.ForwardGet(c, "/api/v1/emergency/pending") })
+				staff.POST("/emergency/:id/review", d.Emergency.ForwardReview)
+			}
+
+			reception := authed.Group("/reception")
+			reception.Use(bffmw.RequireRole("reception"))
+			{
+				reception.GET("/registrations", func(c *gin.Context) { d.Integration.ForwardGet(c, "/internal/v1/registrations") })
+				reception.POST("/registrations/:hms/send-code", d.Reception.SendCode)
+			}
 		}
 	}
 }

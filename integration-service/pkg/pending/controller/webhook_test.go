@@ -26,6 +26,9 @@ func (f *fakeStore) Get(context.Context, string, string) (*model.PendingRegistra
 func (f *fakeStore) List(context.Context, string) ([]model.PendingRegistration, error) {
 	return nil, nil
 }
+func (f *fakeStore) SetStatus(context.Context, string, string, string) error {
+	return nil
+}
 
 // mtlsServer starts a gin router behind RequireAndVerifyClientCert.
 func mtlsServer(t *testing.T, pki *testPKI, store PendingStore) *httptest.Server {

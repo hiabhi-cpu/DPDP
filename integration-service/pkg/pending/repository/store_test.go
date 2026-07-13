@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -98,4 +99,32 @@ func mustStore(t *testing.T) *RedisStore {
 	t.Helper()
 	s, _ := newTestStore(t)
 	return s
+}
+
+func TestSetStatusPreservesRecord(t *testing.T) {
+	s, mr := newTestStore(t)
+	ctx := context.Background()
+	_ = s.Upsert(ctx, sampleReg("hosp-1", "PA-1"))
+	mr.FastForward(1 * time.Hour) // TTL now ~71h, not a fresh 72h
+	if err := s.SetStatus(ctx, "hosp-1", "PA-1", "CODE_SENT"); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+	// SetStatus must preserve the REMAINING ttl, not reset the 72h window.
+	if ttl := mr.TTL(key("hosp-1", "PA-1")); ttl > PendingTTL-30*time.Minute {
+		t.Fatalf("TTL = %v, want it preserved near 71h (SetStatus reset the retention window)", ttl)
+	}
+	got, _ := s.Get(ctx, "hosp-1", "PA-1")
+	if got == nil || got.Status != "CODE_SENT" {
+		t.Fatalf("status = %+v, want CODE_SENT", got)
+	}
+	if got.Mobile != "9876543210" {
+		t.Fatalf("SetStatus clobbered the record: %+v", got)
+	}
+}
+
+func TestSetStatusUnknownReturnsErrNotFound(t *testing.T) {
+	s := mustStore(t)
+	if err := s.SetStatus(context.Background(), "hosp-1", "nope", "DONE"); err != ErrNotFound {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
 }

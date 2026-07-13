@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hiabhi-cpu/notification-service/pkg/otp/model"
 	"github.com/hiabhi-cpu/notification-service/pkg/otp/service"
+	"github.com/hiabhi-cpu/shared/middleware"
 )
 
 // OTPHandler holds HTTP handlers for the OTP domain.
@@ -81,4 +82,55 @@ func (h *OTPHandler) ValidateSession(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"verified": true})
+}
+
+// ClaimSend handles POST /internal/v1/otp/claim/send (hospital-JWT). Reception
+// fires a code to a staged patient; hospital_id comes from the token.
+func (h *OTPHandler) ClaimSend(c *gin.Context) {
+	hospitalID := c.GetString(middleware.CtxHospitalID)
+	if hospitalID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing hospital identity"})
+		return
+	}
+	var req model.ClaimSendRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "mobile and ref are required"})
+		return
+	}
+	resp, err := h.svc.SendClaim(c.Request.Context(), hospitalID, req.Mobile, req.Ref)
+	if err != nil {
+		if errors.Is(err, service.ErrTooManyRequests) {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests — try again shortly"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to send code"})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// ClaimResolve handles POST /internal/v1/otp/claim/resolve (hospital-JWT). The
+// kiosk submits only the code; returns a verified session + the opaque ref.
+func (h *OTPHandler) ClaimResolve(c *gin.Context) {
+	hospitalID := c.GetString(middleware.CtxHospitalID)
+	if hospitalID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing hospital identity"})
+		return
+	}
+	var req model.ClaimResolveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "otp is required"})
+		return
+	}
+	res, err := h.svc.ResolveClaim(c.Request.Context(), hospitalID, req.OTP)
+	if err != nil {
+		if errors.Is(err, service.ErrTooManyRequests) {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts — try again shortly"})
+			return
+		}
+		// Generic — no enumeration signal.
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "code not recognized"})
+		return
+	}
+	c.JSON(http.StatusOK, res)
 }

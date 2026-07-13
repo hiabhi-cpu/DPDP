@@ -47,6 +47,7 @@ func FromBahmni(body []byte, hospitalID string, now time.Time) (model.PendingReg
 		Name:         name,
 		Mobile:       mobile,
 		DOB:          strings.TrimSpace(p.Birthdate),
+		Status:       "PENDING",
 		RegisteredAt: now.UTC().Format(time.RFC3339),
 	}, nil
 }

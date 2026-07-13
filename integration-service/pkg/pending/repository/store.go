@@ -14,6 +14,9 @@ import (
 // PendingTTL is how long a pre-staged registration survives if unused.
 const PendingTTL = 72 * time.Hour
 
+// ErrNotFound is returned when a status update targets a missing/expired record.
+var ErrNotFound = fmt.Errorf("pending registration not found")
+
 // RedisStore persists PendingRegistration records under
 // pending:{hospital_id}:{hms_patient_id} with a TTL.
 type RedisStore struct {
@@ -54,6 +57,38 @@ func (s *RedisStore) Get(ctx context.Context, hospitalID, hmsPatientID string) (
 		return nil, fmt.Errorf("repository.Get: unmarshal: %w", err)
 	}
 	return &reg, nil
+}
+
+// SetStatus updates the record's status in place, preserving its remaining TTL.
+func (s *RedisStore) SetStatus(ctx context.Context, hospitalID, hmsPatientID, status string) error {
+	k := key(hospitalID, hmsPatientID)
+	val, err := s.client.Get(ctx, k).Result()
+	if err == redis.Nil {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("repository.SetStatus: get: %w", err)
+	}
+	var reg model.PendingRegistration
+	if err := json.Unmarshal([]byte(val), &reg); err != nil {
+		return fmt.Errorf("repository.SetStatus: unmarshal: %w", err)
+	}
+	reg.Status = status
+	ttl, err := s.client.TTL(ctx, k).Result()
+	if err != nil {
+		return fmt.Errorf("repository.SetStatus: ttl: %w", err)
+	}
+	if ttl <= 0 {
+		ttl = PendingTTL // no/again-persistent TTL: fall back to the standard window
+	}
+	b, err := json.Marshal(reg)
+	if err != nil {
+		return fmt.Errorf("repository.SetStatus: marshal: %w", err)
+	}
+	if err := s.client.Set(ctx, k, b, ttl).Err(); err != nil {
+		return fmt.Errorf("repository.SetStatus: set: %w", err)
+	}
+	return nil
 }
 
 // List returns all pending records for one hospital.

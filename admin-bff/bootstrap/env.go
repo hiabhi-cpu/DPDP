@@ -16,6 +16,8 @@ type Env struct {
 	ConsentServiceURL   string
 	AuditServiceURL     string
 	EmergencyServiceURL string
+	IntegrationURL      string
+	NotificationURL     string
 	SessionTTL          time.Duration
 	CookieSecure        bool   // false for local http dev, true in production
 	StaticDir           string // path to built SPA; empty disables static serving
@@ -33,6 +35,8 @@ func NewEnv() *Env {
 		ConsentServiceURL:   mustGet("CONSENT_SERVICE_URL"),
 		AuditServiceURL:     mustGet("AUDIT_SERVICE_URL"),
 		EmergencyServiceURL: mustGet("EMERGENCY_SERVICE_URL"),
+		IntegrationURL:      getOrDefault("INTEGRATION_URL", "http://localhost:9009"),
+		NotificationURL:     getOrDefault("NOTIFICATION_URL", "http://localhost:9004"),
 		SessionTTL:          getDurationDefault("SESSION_TTL", 8*time.Hour),
 		CookieSecure:        os.Getenv("COOKIE_SECURE") == "true",
 		StaticDir:           os.Getenv("STATIC_DIR"),
@@ -46,6 +50,13 @@ func mustGet(key string) string {
 		panic(fmt.Sprintf("bootstrap: required env var %q is not set", key))
 	}
 	return v
+}
+
+func getOrDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 func getDurationDefault(key string, def time.Duration) time.Duration {
