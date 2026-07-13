@@ -99,3 +99,26 @@ func mustStore(t *testing.T) *RedisStore {
 	s, _ := newTestStore(t)
 	return s
 }
+
+func TestSetStatusPreservesRecord(t *testing.T) {
+	s := mustStore(t)
+	ctx := context.Background()
+	_ = s.Upsert(ctx, sampleReg("hosp-1", "PA-1"))
+	if err := s.SetStatus(ctx, "hosp-1", "PA-1", "CODE_SENT"); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+	got, _ := s.Get(ctx, "hosp-1", "PA-1")
+	if got == nil || got.Status != "CODE_SENT" {
+		t.Fatalf("status = %+v, want CODE_SENT", got)
+	}
+	if got.Mobile != "9876543210" {
+		t.Fatalf("SetStatus clobbered the record: %+v", got)
+	}
+}
+
+func TestSetStatusUnknownReturnsErrNotFound(t *testing.T) {
+	s := mustStore(t)
+	if err := s.SetStatus(context.Background(), "hosp-1", "nope", "DONE"); err != ErrNotFound {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}

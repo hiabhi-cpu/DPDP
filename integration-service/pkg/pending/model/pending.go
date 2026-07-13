@@ -9,5 +9,6 @@ type PendingRegistration struct {
 	Name         string `json:"name"`
 	Mobile       string `json:"mobile"`        // raw; masked whenever surfaced in a list
 	DOB          string `json:"dob,omitempty"` // optional; feeds the later §9 age-gate
+	Status       string `json:"status"`        // PENDING → CODE_SENT → DONE
 	RegisteredAt string `json:"registered_at"` // RFC3339, when we received the webhook
 }
