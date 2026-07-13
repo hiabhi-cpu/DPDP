@@ -6,6 +6,7 @@ use (
 	./auth-service
 	./consent-service
 	./emergency-service
+	./integration-service
 	./kiosk-bff
 	./notification-service
 	./shared

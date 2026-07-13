@@ -1,0 +1,37 @@
+# integration-service — standalone compose (polyrepo style).
+# Requires shared EXTERNAL infra (redis on dpdp-network) — see ../DOCKER.md.
+# Generate dev certs first:  bash certs/gen-dev-certs.sh
+services:
+  integration-service:
+    container_name: dpdp-integration
+    build:
+      context: ..
+      dockerfile: integration-service/Dockerfile
+    environment:
+      INTEGRATION_SERVICE_PORT: "9009"
+      INTEGRATION_WEBHOOK_PORT: "9443"
+      REDIS_URL: "redis://redis:6379/0"
+      JWT_PUBLIC_KEY_PATH: /keys/auth_public.pem
+      MTLS_SERVER_CERT: /certs/server.pem
+      MTLS_SERVER_KEY: /certs/server.key
+      MTLS_HOSPITAL_CA: /certs/ca.pem
+    ports:
+      - "9009:9009"
+      - "9443:9443"
+    volumes:
+      - ../auth-service/keys:/keys:ro
+      - ./certs:/certs:ro
+      - /data/logs:/data/logs
+    restart: unless-stopped
+    networks:
+      - dpdp-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9009/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+networks:
+  dpdp-network:
+    external: true
