@@ -24,6 +24,7 @@ type listItem struct {
 	Name         string `json:"name"`
 	Mobile       string `json:"mobile"` // masked
 	RegisteredAt string `json:"registered_at"`
+	Status       string `json:"status"`
 }
 
 // List handles GET /internal/v1/registrations — pending records for the
@@ -47,6 +48,7 @@ func (h *ReadHandler) List(c *gin.Context) {
 			Name:         r.Name,
 			Mobile:       maskMobile(r.Mobile),
 			RegisteredAt: r.RegisteredAt,
+			Status:       r.Status,
 		})
 	}
 	c.JSON(http.StatusOK, items)
