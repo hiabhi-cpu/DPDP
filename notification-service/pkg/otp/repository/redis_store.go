@@ -11,27 +11,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// OTPStore handles Redis operations for OTPs and authenticated sessions.
-type OTPStore interface {
-	SaveOTPHash(ctx context.Context, refID string, hash string, mobile string, ttl time.Duration) error
-	GetOTPHash(ctx context.Context, refID string) (hash string, mobile string, err error)
-	DeleteOTP(ctx context.Context, refID string) error
-
-	SaveSession(ctx context.Context, sessionID string, state model.SessionState, ttl time.Duration) error
-	// GetSession returns the verified-OTP session, or nil if missing/expired.
-	GetSession(ctx context.Context, sessionID string) (*model.SessionState, error)
-
-	// IncrVerifyAttempts counts verification attempts for one reference ID so a
-	// 6-digit OTP cannot be brute-forced. The counter shares the OTP's lifetime.
-	IncrVerifyAttempts(ctx context.Context, refID string, ttl time.Duration) (int64, error)
-	// AcquireSendCooldown returns false while the per-mobile resend cooldown is
-	// still running (SET NX), true when this send may proceed.
-	AcquireSendCooldown(ctx context.Context, mobile string, ttl time.Duration) (bool, error)
-	// IncrHourlySends counts sends per mobile in a rolling hour — the guard
-	// against SMS-pumping cost attacks.
-	IncrHourlySends(ctx context.Context, mobile string) (int64, error)
-}
-
 type redisOTPStore struct {
 	client *redis.Client
 }
@@ -62,9 +41,9 @@ func (s *redisOTPStore) GetOTPHash(ctx context.Context, refID string) (string, s
 		return "", "", fmt.Errorf("repository.GetOTPHash: redis get failed: %w", err)
 	}
 
-	// Parse hash|mobile
-	parts := strings.SplitN(val, "|", 2)
-	if len(parts) != 2 {
+	// Parse hash|mobile or hash|mobile|ref
+	parts := strings.SplitN(val, "|", 3)
+	if len(parts) < 2 {
 		return "", "", fmt.Errorf("repository.GetOTPHash: invalid data format in redis")
 	}
 
@@ -139,6 +118,70 @@ func (s *redisOTPStore) IncrHourlySends(ctx context.Context, mobile string) (int
 	if n == 1 {
 		if err := s.client.Expire(ctx, key, time.Hour).Err(); err != nil {
 			return n, fmt.Errorf("repository.IncrHourlySends: redis expire failed: %w", err)
+		}
+	}
+	return n, nil
+}
+
+func claimSetKey(hospitalID string) string  { return fmt.Sprintf("claimset:%s", hospitalID) }
+func resolveAttemptsKey(h string) string     { return fmt.Sprintf("resolve_attempts:%s", h) }
+
+func (s *redisOTPStore) SaveClaimOTP(ctx context.Context, refID, hash, mobile, ref, hospitalID string, ttl time.Duration) error {
+	// otp:{refID} = hash|mobile|ref  (same key the verify path reads)
+	if err := s.client.Set(ctx, fmt.Sprintf("otp:%s", refID), fmt.Sprintf("%s|%s|%s", hash, mobile, ref), ttl).Err(); err != nil {
+		return fmt.Errorf("repository.SaveClaimOTP: set otp: %w", err)
+	}
+	setKey := claimSetKey(hospitalID)
+	if err := s.client.SAdd(ctx, setKey, refID).Err(); err != nil {
+		return fmt.Errorf("repository.SaveClaimOTP: sadd: %w", err)
+	}
+	// Refresh the set TTL so it never outlives the OTPs it points at by much.
+	if err := s.client.Expire(ctx, setKey, ttl).Err(); err != nil {
+		return fmt.Errorf("repository.SaveClaimOTP: expire set: %w", err)
+	}
+	return nil
+}
+
+func (s *redisOTPStore) GetClaimOTP(ctx context.Context, refID string) (string, string, string, error) {
+	val, err := s.client.Get(ctx, fmt.Sprintf("otp:%s", refID)).Result()
+	if err == redis.Nil {
+		return "", "", "", nil // expired between SMEMBERS and here
+	}
+	if err != nil {
+		return "", "", "", fmt.Errorf("repository.GetClaimOTP: get: %w", err)
+	}
+	parts := strings.SplitN(val, "|", 3)
+	if len(parts) < 2 {
+		return "", "", "", fmt.Errorf("repository.GetClaimOTP: bad value")
+	}
+	ref := ""
+	if len(parts) == 3 {
+		ref = parts[2]
+	}
+	return parts[0], parts[1], ref, nil
+}
+
+func (s *redisOTPStore) ClaimMembers(ctx context.Context, hospitalID string) ([]string, error) {
+	members, err := s.client.SMembers(ctx, claimSetKey(hospitalID)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("repository.ClaimMembers: %w", err)
+	}
+	return members, nil
+}
+
+func (s *redisOTPStore) RemoveClaim(ctx context.Context, hospitalID, refID string) error {
+	return s.client.SRem(ctx, claimSetKey(hospitalID), refID).Err()
+}
+
+func (s *redisOTPStore) IncrResolveAttempts(ctx context.Context, hospitalID string, ttl time.Duration) (int64, error) {
+	key := resolveAttemptsKey(hospitalID)
+	n, err := s.client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, fmt.Errorf("repository.IncrResolveAttempts: %w", err)
+	}
+	if n == 1 {
+		if err := s.client.Expire(ctx, key, ttl).Err(); err != nil {
+			return 0, fmt.Errorf("repository.IncrResolveAttempts: expire: %w", err)
 		}
 	}
 	return n, nil
