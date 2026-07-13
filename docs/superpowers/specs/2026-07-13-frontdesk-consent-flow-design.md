@@ -41,9 +41,12 @@ built or tested before Spec A existed, so A shipped first.
 - **notification-service stays HMS-agnostic.** Its new "claim" feature attaches an opaque
   `ref` string to an OTP and scopes it to a hospital; it never learns what `ref` means
   (it's the `hms_patient_id`).
-- **kiosk-bff stays stateless.** Between resolve and capture it hands the browser a
-  short-lived **HMAC-signed capture-handle** carrying `{session_id, mobile, ref}`, opaque
-  to the browser and returned on submit. The raw mobile never reaches the browser.
+- **kiosk-bff stays stateless and reuses the existing capture flow.** Resolve returns
+  `{session_id, mobile, name, purposes}` to the browser; the browser then captures with the
+  same shape the walk-in flow already uses (`{mobile, session_id, purposes}`) plus
+  `hms_patient_id`. No signing, no server-side handle — the mobile lives in the browser only
+  for the patient's own in-progress capture (as the walk-in flow already does), and the
+  kiosk resets-on-done, clearing it.
 - **Reception is a new least-privilege role**, enforced server-side at the BFF, not just
   hidden in the UI.
 - **Live queue status** `PENDING → CODE_SENT → DONE`, so reception can nudge stragglers.
@@ -63,9 +66,9 @@ Patient's phone holds the 6-digit OTP ──────────────
 Kiosk PWA "Enter your code" ──► kiosk-bff ──► notification claim-resolve(hospital, otp)
                                               (hashed match in hospital active set → verify → session)
                                           ──► integration GET pending(ref) → name, notice/purposes
-   │  browser receives: name + purposes + signed capture-handle   (NO mobile)
-   ▼  patient ticks purposes, submits {handle, purposes}
-kiosk-bff ──► consent-svc  capture(mobile, session_id, hms_patient_id=ref, purposes) → vault row
+   │  browser receives: {session_id, mobile, name, purposes}
+   ▼  patient ticks purposes, submits {mobile, session_id, hms_patient_id, purposes}
+kiosk-bff ──► consent-svc  capture(mobile, session_id, hms_patient_id, purposes) → vault row
           ──► integration   set status = DONE   (best-effort; reception queue flips to "Consent done")
 ```
 
@@ -76,26 +79,26 @@ kiosk-bff ──► consent-svc  capture(mobile, session_id, hms_patient_id=ref,
 The one genuinely new mechanism. Two internal endpoints (service-token auth,
 `InternalServiceAuth`), plus a small Redis claim index.
 
-- **Claim index (Redis), three keys, all TTL = OTP expiry:**
+- **Claim index (Redis): one key, TTL = OTP expiry.**
   - `claimset:{hospital}` — a Redis set of the hospital's active `reference_id`s (what
-    resolve iterates).
-  - `claimmeta:{reference_id}` → `{ref}` — the opaque record ref for that OTP. The `mobile`
-    and the OTP hash already live in the existing OTP-hash record keyed by `reference_id`;
-    resolve reads both from there, so this only adds `ref`.
-  - `claim:{hospital}:by-ref:{ref}` → `reference_id` — lets a resend find and supersede the
-    patient's prior claim (one active code per patient).
-- **`POST /internal/v1/otp/claim/send` `{hospital_id, mobile, ref}`** → generate the OTP,
-  **regenerating until the code is unique within `claimset:{hospital}`** (a handful of live
-  codes — cheap), store the usual hash, add to the claim index (superseding any prior claim
-  for the same `ref`), send the SMS (mock in dev, masked in logs). Returns `{reference_id}`.
-  Subject to the existing per-mobile send cooldown + hourly cap (resend safety).
+    resolve iterates). The `mobile` and OTP hash already live in the existing OTP record
+    keyed by `reference_id`; fold the opaque `ref` into that same record value (one extra
+    field), so no separate metadata key is needed.
+- **`POST /internal/v1/otp/claim/send` `{hospital_id, mobile, ref}`** → this is the existing
+  OTP `send` core (generate + hash + SMS + the per-mobile cooldown/hourly cap) plus claim
+  indexing — reuse it, don't fork a parallel send path. Add optional `hospital_id`/`ref` so
+  the send path stores `ref` on the OTP record and adds `reference_id` to
+  `claimset:{hospital}`, **regenerating until the code is unique within that set** (a handful
+  of live codes — cheap). Returns `{reference_id}`. A resend simply fires a fresh code; the
+  patient's previous claim is left to expire on its own OTP TTL (a stale extra code for the
+  same patient resolves to the same `ref` — harmless), so there is no supersede bookkeeping.
 - **`POST /internal/v1/otp/claim/resolve` `{hospital_id, otp}`** → **per-hospital
   resolve-attempt cap** (Redis counter; the existing per-`reference_id` 5-attempt cap does
   not cover code-only resolve, so this is required to stop code-hammering at a kiosk).
   Iterate `claimset:{hospital}`, **hash-compare** the submitted code against each active
   OTP hash; on the single match, run the normal verify path (creates the verified session,
-  burns the OTP, removes the claim) and return `{session_id, mobile, ref}`. No match →
-  generic failure (no enumeration signal).
+  burns the OTP, discards its `reference_id` from `claimset`) and return
+  `{session_id, mobile, ref}`. No match → generic failure (no enumeration signal).
 - Codes are never stored or logged in plaintext; uniqueness-on-send guarantees one code →
   at most one record.
 
@@ -130,16 +133,16 @@ The one genuinely new mechanism. Two internal endpoints (service-token auth,
 ### 5. kiosk-bff + kiosk PWA — code-entry completion (new)
 
 - **kiosk-bff** gains a `serviceauth` service-token client (it already mints a hospital JWT
-  for consent/otp; the notification `/internal` resolve needs a service token). It also
-  gains a **handle secret** (env) for signing capture-handles.
-- **`POST /kiosk/api/claim/resolve` `{otp}`** → notification claim-resolve →
-  `{session_id, mobile, ref}`; integration get(ref) (hospital JWT) → `name` + notice
-  context; build a signed handle `HMAC({session_id, mobile, ref, exp})`; return to the
-  browser `{name, purposes, handle}` — **never the mobile**. Resolve failure → generic
-  "code not recognized — ask reception to resend."
-- **`POST /kiosk/api/claim/capture` `{handle, purposes}`** → verify+decode the handle (reject
-  tampered/expired) → consent-svc capture(`mobile`, `session_id`, `hms_patient_id=ref`,
-  `purposes`) → on 201, integration set `DONE` (best-effort) → return success.
+  for consent/otp; the notification `/internal` resolve needs a service token). No new
+  signing secret.
+- **`POST /kiosk/api/claim/resolve` `{otp}`** (one new endpoint) → notification claim-resolve
+  → `{session_id, mobile, ref}`; integration get(ref) (hospital JWT) → `name` + notice
+  context; return to the browser `{session_id, mobile, name, purposes}`. Resolve failure →
+  generic "code not recognized — ask reception to resend."
+- **Capture reuses the existing `/kiosk/api/consent/capture` proxy** — the browser submits
+  `{mobile, session_id, hms_patient_id, purposes}` (walk-in shape + the hms link). The only
+  addition: after a 201 with an `hms_patient_id`, kiosk-bff fires integration set `DONE`
+  (best-effort). No new capture endpoint.
 - **PWA:** new primary landing "Enter the code we texted you" (6-digit input) →
   greeting + the existing per-purpose notice/consent UI (unchanged) → done screen. The
   existing **mobile-typed walk-in flow stays** as a secondary path for patients not
@@ -150,7 +153,7 @@ The one genuinely new mechanism. Two internal endpoints (service-token auth,
 1. (Spec A) Bahmni webhook → pending record `PENDING`.
 2. Reception "Send code" → OTP texted, record `CODE_SENT`, one active claim for the patient.
 3. Patient enters the code at a kiosk → hashed-match resolve → verified session + `ref`;
-   browser shows name + purposes + signed handle.
+   browser shows name + purposes (holds `session_id` + `mobile` for its own capture).
 4. Patient ticks purposes, submits → capture writes the vault row (`patient_key` +
    `hms_patient_id`) → record `DONE` → reception queue shows "Consent done".
 
@@ -159,15 +162,15 @@ The one genuinely new mechanism. Two internal endpoints (service-token auth,
 - **Code-hammering:** per-hospital resolve-attempt cap → 429; hashed compare only; generic
   failure text (no "valid but wrong hospital" hints).
 - **OTP secrecy:** never stored/logged in plaintext; resolve is a hash compare.
-- **PII:** mobile never reaches the browser, logs, or URLs; the capture-handle is
-  HMAC-signed and opaque; queue and SMS logs mask the mobile.
+- **PII:** the mobile reaches the browser only for the patient's own in-progress capture
+  (as the walk-in flow already does) and is cleared on kiosk reset-on-done; it never appears
+  in logs or URLs; the reception queue and SMS logs mask the mobile.
 - **RBAC:** reception role enforced at admin-bff, not only in the SPA.
-- **Handle integrity:** tampered/expired handles rejected; short TTL (a few minutes) bounds
-  reuse.
 - **Idempotency & recovery:** capture is already idempotent (`session_id`, hardening #8).
-  Resend supersedes the prior claim (one active code per patient). The `DONE` signal is
-  best-effort — if lost, the record still expires at 72h and reception sees a stale
-  "code sent" at worst; nothing is mis-captured.
+  A resend just fires a fresh code; a superseded code stays valid until its short OTP TTL
+  but maps to the same patient, so it is harmless. The `DONE` signal is best-effort — if
+  lost, the record still expires at 72h and reception sees a stale "code sent" at worst;
+  nothing is mis-captured.
 - **Availability:** notification/integration unreachable at the kiosk → resolve fails
   cleanly → patient asks reception to resend or uses the walk-in mobile flow. The webhook
   path is an accelerator, never a hard dependency.
@@ -176,13 +179,13 @@ The one genuinely new mechanism. Two internal endpoints (service-token auth,
 
 - **notification:** claim-send uniqueness-on-send (collision regenerates), hashed resolve →
   `{session_id, mobile, ref}`, wrong code → generic fail + resolve-attempt cap, resend
-  supersedes the prior claim.
+  fires a fresh code (both old and new resolve to the same `ref`).
 - **integration:** `status` transitions `PENDING→CODE_SENT→DONE`; set-status hospital-scoped;
   TTL preserved.
 - **admin-bff:** reception role gating (reception blocked from audit/stats/emergency;
   admin/dpo unaffected), send-code orchestration order, queue masks mobile.
-- **kiosk-bff:** resolve returns no mobile to the browser; signed-handle verify + tamper/expiry
-  rejection; capture links `hms_patient_id` and marks `DONE`.
+- **kiosk-bff:** resolve returns the staged patient's session + name; capture (existing proxy)
+  links `hms_patient_id` and, on 201, marks the record `DONE`.
 - **Live e2e:** stage via the Spec A mTLS webhook → reception send-code → read the mock-SMS
   code from the notification log → kiosk resolve(code) → tick purposes → capture → vault row
   carries `hms_patient_id` → reception queue shows "Consent done".
