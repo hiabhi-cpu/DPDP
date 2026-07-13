@@ -24,7 +24,7 @@ func (s *redisOTPStore) SaveOTPHash(ctx context.Context, refID string, hash stri
 	key := fmt.Sprintf("otp:%s", refID)
 	// We store both hash and mobile so we can verify the mobile number matches at verification time.
 	val := fmt.Sprintf("%s|%s", hash, mobile)
-	
+
 	if err := s.client.Set(ctx, key, val, ttl).Err(); err != nil {
 		return fmt.Errorf("repository.SaveOTPHash: redis set failed: %w", err)
 	}
@@ -123,8 +123,8 @@ func (s *redisOTPStore) IncrHourlySends(ctx context.Context, mobile string) (int
 	return n, nil
 }
 
-func claimSetKey(hospitalID string) string  { return fmt.Sprintf("claimset:%s", hospitalID) }
-func resolveAttemptsKey(h string) string     { return fmt.Sprintf("resolve_attempts:%s", h) }
+func claimSetKey(hospitalID string) string { return fmt.Sprintf("claimset:%s", hospitalID) }
+func resolveAttemptsKey(h string) string   { return fmt.Sprintf("resolve_attempts:%s", h) }
 
 func (s *redisOTPStore) SaveClaimOTP(ctx context.Context, refID, hash, mobile, ref, hospitalID string, ttl time.Duration) error {
 	// otp:{refID} = hash|mobile|ref  (same key the verify path reads)
