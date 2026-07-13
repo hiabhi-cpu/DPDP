@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 
 	bffmw "github.com/hiabhi-cpu/admin-bff/pkg/middleware"
 	"github.com/hiabhi-cpu/admin-bff/pkg/session"
@@ -100,12 +101,22 @@ func (h *ReceptionHandler) SendCode(c *gin.Context) {
 		return
 	}
 
-	// 3. Mark CODE_SENT (best-effort — the code is already out).
+	// 3. Mark CODE_SENT (best-effort — the code is already out). Log on failure
+	// so a queue item stuck at PENDING is diagnosable; the reception UI still
+	// gets "sent" because the patient has the code.
 	sr, err := h.do(c, http.MethodPost, h.integrationBase+"/internal/v1/registrations/"+hms+"/status",
 		map[string]string{"status": "CODE_SENT"})
-	if err == nil {
+	if err != nil {
+		log.Warnf("reception: CODE_SENT status update failed for hms=%s: %v", hms, err)
+	} else {
+		if sr.StatusCode != http.StatusOK {
+			log.Warnf("reception: CODE_SENT status update returned %d for hms=%s", sr.StatusCode, hms)
+		}
 		sr.Body.Close()
 	}
-	_ = sess // hospital scoping is enforced downstream by the hospital JWT
+	// ponytail: hospital scoping is enforced downstream by the hospital JWT, and
+	// admin-bff is single-tenant (one HOSPITAL_API_KEY), so sess.HospitalID always
+	// matches the minted token. If admin-bff ever goes multi-tenant, assert that match here.
+	_ = sess
 	c.JSON(http.StatusOK, gin.H{"status": "sent"})
 }
