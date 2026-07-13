@@ -38,14 +38,18 @@ func main() {
 	users := auth.NewUserRepository(db)
 	store := session.NewRedisStore(rdb, env.SessionTTL)
 	tokens := hospitaljwt.NewHospitalTokenClient(env.AuthServiceURL, env.HospitalAPIKey)
+	integrationProxy := handlers.NewProxy(env.IntegrationURL, tokens)
+	receptionHandler := handlers.NewReceptionHandler(env.IntegrationURL, env.NotificationURL, tokens)
 
 	deps := routes.Deps{
-		Auth:      handlers.NewAuthHandler(users, store, env.SessionTTL, cookieCfg),
-		Store:     store,
-		Cookie:    cookieCfg,
-		Consent:   handlers.NewProxy(env.ConsentServiceURL, tokens),
-		Audit:     handlers.NewProxy(env.AuditServiceURL, tokens),
-		Emergency: handlers.NewProxy(env.EmergencyServiceURL, tokens),
+		Auth:        handlers.NewAuthHandler(users, store, env.SessionTTL, cookieCfg),
+		Store:       store,
+		Cookie:      cookieCfg,
+		Consent:     handlers.NewProxy(env.ConsentServiceURL, tokens),
+		Audit:       handlers.NewProxy(env.AuditServiceURL, tokens),
+		Emergency:   handlers.NewProxy(env.EmergencyServiceURL, tokens),
+		Integration: integrationProxy,
+		Reception:   receptionHandler,
 	}
 
 	gin.SetMode(gin.ReleaseMode)
