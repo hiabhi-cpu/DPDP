@@ -68,6 +68,205 @@ body{font-family:var(--font-sans)}
 </style>
 
 <div class="wrap">
+
+<h2 class="sr-only">Interactive 10-question DPDP compliance assessment for hospitals with live score, violated sections, fine exposure, and next-step pitch</h2>
+
+<div style="background: var(--surface-1); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem;">
+  <p style="font-size: 15px; font-weight: 500; margin: 0 0 2px;">DPDP readiness check — 10 questions</p>
+  <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Based on the Digital Personal Data Protection Act, 2023 (Act No. 22 of 2023). Answer honestly — takes 3 minutes.</p>
+</div>
+
+<div style="display: flex; align-items: center; gap: 14px; background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem;">
+  <div id="scoreCircle" style="width: 64px; height: 64px; border-radius: 50%; border: 3px solid var(--border-strong); display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0;">
+    <span id="scoreNum" style="font-size: 20px; font-weight: 500;">—</span>
+    <span style="font-size: 10px; color: var(--text-muted);">/100</span>
+  </div>
+  <div style="flex: 1; min-width: 0;">
+    <p id="scoreLabel" style="font-size: 14px; font-weight: 500; margin: 0 0 2px;">Not started</p>
+    <p id="scoreDesc" style="font-size: 12px; color: var(--text-secondary); margin: 0 0 6px;">Answer the questions below</p>
+    <div style="background: var(--border); border-radius: 4px; height: 5px;">
+      <div id="prog" style="height: 5px; border-radius: 4px; width: 0%; background: var(--fill-accent); transition: width 0.3s;"></div>
+    </div>
+  </div>
+</div>
+
+<div id="qArea"></div>
+
+<div id="resultArea" style="display: none;">
+
+  <div id="violBox" style="margin: 1rem 0;"></div>
+
+  <div style="background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem;">
+    <p style="font-size: 13px; font-weight: 500; margin: 0 0 8px;"><i class="ti ti-gavel" aria-hidden="true" style="font-size: 16px; vertical-align: -2px; margin-right: 6px;"></i>Fine exposure if this continues</p>
+    <div id="fineList"></div>
+    <div style="border-top: 0.5px solid var(--border); margin-top: 8px; padding-top: 8px; display: flex; justify-content: space-between; align-items: baseline;">
+      <span style="font-size: 12px; color: var(--text-secondary);">Maximum combined exposure</span>
+      <span id="fineTotal" style="font-size: 20px; font-weight: 500; color: var(--text-danger);">—</span>
+    </div>
+    <p style="font-size: 11px; color: var(--text-muted); margin: 6px 0 0;">Per the Schedule of the DPDP Act, 2023. Enforcement begins May 13, 2027. Complaints can be filed by any patient from day one.</p>
+  </div>
+
+  <div style="background: var(--bg-success); border-radius: 12px; padding: 1rem 1.25rem;">
+    <p style="font-size: 13px; font-weight: 500; color: var(--text-success); margin: 0 0 6px;"><i class="ti ti-shield-check" aria-hidden="true" style="font-size: 16px; vertical-align: -2px; margin-right: 6px;"></i>The first step that protects you the most</p>
+    <p style="font-size: 12px; color: var(--text-success); margin: 0 0 8px; line-height: 1.6;">Most violations above trace back to one root cause: no digital consent system. Section 6(10) puts the burden of proof on the hospital — if you cannot produce a consent record, you have already lost the case. A consent software fixes questions 1, 2, 3, 4, 5 and 10 in one step, and creates the audit trail that defends you on the rest.</p>
+    <p style="font-size: 12px; color: var(--text-success); margin: 0 0 10px; line-height: 1.6;">Your staff changes nothing. A tablet at the OPD desk captures patient consent with OTP in under 60 seconds — in the patient's own language. Every record is timestamped and tamper-proof for 7 years.</p>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <button onclick="sendPrompt('Show me how the consent software works step by step for my hospital')">See how it works ↗</button>
+      <button onclick="sendPrompt('What would the free 60-day pilot include for my hospital?')">Free 60-day pilot ↗</button>
+    </div>
+  </div>
+
+  <button onclick="resetAll()" style="margin-top: 1rem;">Start new assessment</button>
+</div>
+
+<script>
+const QS = [
+ {id:1, sec:"Sec 6(1) + 6(10)", fine:5000, fineLabel:"Rs 50 Cr",
+  q:"How do patients give consent before you collect their data?",
+  opts:[["Paper form or verbal only",0],["Digital but no proof stored",1],["Digital, OTP-verified, record stored",3]],
+  viol:"Consent must be a clear affirmative action, and Section 6(10) requires YOU to prove notice was given and consent obtained. Paper forms cannot meet this burden of proof in a digital-data proceeding."},
+ {id:2, sec:"Sec 5(1)", fine:5000, fineLabel:"Rs 50 Cr",
+  q:"Before taking consent, do you show patients exactly what data you collect and why?",
+  opts:[["No separate notice given",0],["Generic admission form covers it",1],["Clear notice per purpose, before consent",3]],
+  viol:"Section 5(1) requires a notice BEFORE or WITH every consent request — stating the data, the purpose, how to exercise rights, and how to complain to the Board."},
+ {id:3, sec:"Sec 5(3) + 6(3)", fine:5000, fineLabel:"Rs 50 Cr",
+  q:"Can patients read the consent notice in their own language?",
+  opts:[["English only",0],["English + Hindi",1],["Patient's choice from 22 scheduled languages",3]],
+  viol:"Sections 5(3) and 6(3) give patients the right to access the notice and consent request in English OR any of the 22 languages in the Eighth Schedule."},
+ {id:4, sec:"Sec 6(4)", fine:5000, fineLabel:"Rs 50 Cr",
+  q:"Can a patient withdraw consent as easily as they gave it?",
+  opts:[["No withdrawal process exists",0],["Written application to admin only",1],["One-step withdrawal (SMS/portal/desk)",3]],
+  viol:"Section 6(4): withdrawal must be as easy as giving consent. A written-application-only process when consent was given in seconds fails this test."},
+ {id:5, sec:"Sec 6(6)", fine:5000, fineLabel:"Rs 50 Cr",
+  q:"If a patient withdraws, do your labs, TPAs and vendors also stop using their data?",
+  opts:[["We have no way to inform them",0],["We inform manually, no tracking",1],["Automatic propagation to all processors",3]],
+  viol:"Section 6(6): on withdrawal, you must cease processing AND cause your Data Processors (labs, insurers, cloud vendors) to cease. Their failure is your liability."},
+ {id:6, sec:"Sec 8(5)", fine:25000, fineLabel:"Rs 250 Cr",
+  q:"How are patient reports shared with patients and labs day-to-day?",
+  opts:[["WhatsApp / personal email routinely",0],["Mixed — some secure, some not",1],["Encrypted channels only, access logged",3]],
+  viol:"Section 8(5) requires reasonable security safeguards to prevent breach. Unencrypted WhatsApp/email sharing is a live breach risk — this carries the Act's HIGHEST penalty."},
+ {id:7, sec:"Sec 8(6)", fine:20000, fineLabel:"Rs 200 Cr",
+  q:"If patient data leaked today, could you notify the Data Protection Board and every affected patient?",
+  opts:[["No process, wouldn't know where to start",0],["Rough idea but nothing documented",1],["Documented breach-response plan, tested",3]],
+  viol:"Section 8(6): every breach must be intimated to the Board AND each affected patient. Failure to notify is the second-highest penalty in the Act."},
+ {id:8, sec:"Sec 8(7)", fine:5000, fineLabel:"Rs 50 Cr",
+  q:"Do you delete patient data once its purpose is served (beyond legal retention)?",
+  opts:[["Never deleted — kept forever",0],["Ad hoc, when storage fills up",1],["Retention schedule + deletion process",3]],
+  viol:"Section 8(7): personal data must be erased when consent is withdrawn or purpose is served, and you must cause your processors to erase it too."},
+ {id:9, sec:"Sec 8(10) + 13", fine:5000, fineLabel:"Rs 50 Cr",
+  q:"If a patient complains about how you handled their data, is there a formal channel?",
+  opts:[["No — they talk to the front desk",0],["Complaint register, no timelines",1],["Grievance mechanism with response timelines",3]],
+  viol:"Sections 8(10) and 13: you must provide an effective, readily-available grievance mechanism and respond within prescribed timelines — before the patient escalates to the Board."},
+ {id:10, sec:"Sec 9(1)", fine:20000, fineLabel:"Rs 200 Cr",
+  q:"For patients under 18, do you take verifiable consent from a parent or guardian?",
+  opts:[["No separate process for minors",0],["Guardian signs, identity not verified",1],["Verifiable parental consent captured",3]],
+  viol:"Section 9(1): processing a child's data requires VERIFIABLE parental/guardian consent. Paediatric OPD without this is a per-child violation at Rs 200 Cr exposure."}
+];
+
+const ans = {};
+const area = document.getElementById('qArea');
+
+QS.forEach(q => {
+  const card = document.createElement('div');
+  card.style.cssText = "background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 8px;";
+  card.innerHTML = `
+    <div style="display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
+      <p style="font-size: 13px; font-weight: 500; margin: 0; line-height: 1.5;">${q.id}. ${q.q}</p>
+      <span style="font-size: 10px; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; padding-top: 2px;">${q.sec}</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 5px;" id="opts-${q.id}"></div>`;
+  area.appendChild(card);
+  const wrap = card.querySelector(`#opts-${q.id}`);
+  q.opts.forEach((o, idx) => {
+    const b = document.createElement('div');
+    b.style.cssText = "display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 0.5px solid var(--border); border-radius: var(--radius); cursor: pointer; font-size: 12px; color: var(--text-secondary);";
+    b.innerHTML = `<span style="width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--border-strong); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px;" data-dot></span>${o[0]}`;
+    b.onclick = () => {
+      ans[q.id] = o[1];
+      wrap.querySelectorAll('div').forEach(el => {
+        el.style.background = 'transparent';
+        el.style.borderColor = 'var(--border)';
+        const d = el.querySelector('[data-dot]'); if(d){d.textContent=''; d.style.background='transparent';}
+      });
+      const bgs = ['var(--bg-danger)','var(--bg-warning)','var(--bg-success)'];
+      const brs = ['var(--border-danger)','var(--border-warning)','var(--border-success)'];
+      const si = o[1]===0?0:(o[1]===1?1:2);
+      b.style.background = bgs[si];
+      b.style.borderColor = brs[si];
+      const dot = b.querySelector('[data-dot]');
+      dot.textContent = '✓';
+      update();
+    };
+    wrap.appendChild(b);
+  });
+});
+
+function update(){
+  const n = Object.keys(ans).length;
+  document.getElementById('prog').style.width = Math.round(n/10*100) + '%';
+  const raw = Object.values(ans).reduce((a,b)=>a+b,0);
+  const score = Math.round(raw/30*100);
+  const el = document.getElementById('scoreNum');
+  const circ = document.getElementById('scoreCircle');
+  el.textContent = n ? score : '—';
+  let label, desc, color;
+  if(score>=80){label='Strong position'; desc='Minor gaps — formalise documentation'; color='var(--fill-success)';}
+  else if(score>=55){label='Moderate risk'; desc='Key gaps in consent and breach readiness'; color='var(--fill-warning)';}
+  else if(score>=30){label='High risk'; desc='Multiple live violations of the Act'; color='var(--fill-danger)';}
+  else {label='Critical risk'; desc='Near-zero compliance — exposure is active now'; color='var(--fill-danger)';}
+  if(n){
+    document.getElementById('scoreLabel').textContent = label;
+    document.getElementById('scoreDesc').textContent = desc;
+    circ.style.borderColor = color; el.style.color = color;
+  }
+  if(n===10) showResult(score);
+}
+
+function showResult(score){
+  const R = document.getElementById('resultArea');
+  R.style.display = 'block';
+  const viols = QS.filter(q => ans[q.id] < 2);
+  const vb = document.getElementById('violBox');
+  if(viols.length){
+    vb.innerHTML = `<p style="font-size: 13px; font-weight: 500; margin: 0 0 8px;"><i class="ti ti-alert-triangle" aria-hidden="true" style="font-size: 16px; vertical-align: -2px; margin-right: 6px; color: var(--text-danger);"></i>Sections you are currently violating (${viols.length} of 10)</p>` +
+      viols.map(q => `<div style="background: var(--bg-danger); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 6px;">
+        <p style="font-size: 12px; font-weight: 500; color: var(--text-danger); margin: 0 0 3px;">${q.sec} — up to ${q.fineLabel}</p>
+        <p style="font-size: 11px; color: var(--text-danger); margin: 0; line-height: 1.5;">${q.viol}</p>
+      </div>`).join('');
+  } else {
+    vb.innerHTML = `<div style="background: var(--bg-success); border-radius: var(--radius); padding: 10px 12px;"><p style="font-size: 12px; color: var(--text-success); margin: 0;">No direct violations found. Focus on documentation and periodic review.</p></div>`;
+  }
+  const fl = document.getElementById('fineList');
+  const seen = {};
+  let total = 0;
+  viols.forEach(q => { if(!seen[q.sec]){ seen[q.sec]=true; total += q.fine; } });
+  fl.innerHTML = viols.length ? viols.map(q =>
+    `<div style="display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0;">
+      <span style="color: var(--text-secondary);">${q.sec}</span>
+      <span style="font-weight: 500;">up to ${q.fineLabel}</span>
+    </div>`).join('') : '<p style="font-size: 12px; color: var(--text-secondary); margin: 0;">No fine exposure identified.</p>';
+  const cr = total/100;
+  document.getElementById('fineTotal').textContent = viols.length ? 'Rs ' + (cr >= 100 ? cr.toLocaleString('en-IN') : cr) + ' Cr' : 'Rs 0';
+  R.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function resetAll(){
+  Object.keys(ans).forEach(k => delete ans[k]);
+  document.getElementById('resultArea').style.display = 'none';
+  document.querySelectorAll('[id^="opts-"] div').forEach(el => {
+    el.style.background = 'transparent';
+    el.style.borderColor = 'var(--border)';
+    const d = el.querySelector('[data-dot]'); if(d) d.textContent='';
+  });
+  document.getElementById('scoreNum').textContent = '—';
+  document.getElementById('scoreLabel').textContent = 'Not started';
+  document.getElementById('scoreDesc').textContent = 'Answer the questions below';
+  document.getElementById('prog').style.width = '0%';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+</script>
+
+<div class="section-label" style="margin-top:2.5rem">Product architecture</div>
 <h2 class="sr-only">Full architecture for DPDP consent manager — layers, Go stack, frontend options, and build checklist</h2>
 
 <div class="tabs">
