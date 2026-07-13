@@ -43,6 +43,7 @@ func (h *WebhookHandler) PatientRegistered(c *gin.Context) {
 
 	reg, err := adapter.FromBahmni(body, hospitalID, time.Now())
 	if err != nil {
+		log.Warnf("integration-service: rejected registration hospital=%s: %v", hospitalID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid registration payload"})
 		return
 	}

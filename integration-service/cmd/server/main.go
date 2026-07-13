@@ -46,7 +46,7 @@ func main() {
 	internal := gin.New()
 	_ = internal.SetTrustedProxies(nil)
 	internal.Use(gin.Recovery(), gin.Logger())
-	routes.SetupInternal(internal, readHandler, pubKey)
+	routes.SetupInternal(internal, readHandler, pubKey, redisClient)
 	internalSrv := &http.Server{
 		Addr: ":" + env.InternalPort, Handler: internal,
 		ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second,
