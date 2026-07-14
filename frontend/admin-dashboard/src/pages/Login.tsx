@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { homePathForRole } from "../auth/roleHome";
 import styles from "./Login.module.css";
 
 export function Login() {
@@ -16,8 +17,8 @@ export function Login() {
     setError("");
     setBusy(true);
     try {
-      await login(email, password);
-      navigate("/", { replace: true });
+      const me = await login(email, password);
+      navigate(homePathForRole(me.role), { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "login failed");
     } finally {

@@ -5,7 +5,7 @@ import type { Me } from "../api/types";
 interface AuthState {
   user: Me | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<Me>;
   logout: () => Promise<void>;
 }
 
@@ -35,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     const me = await api.login(email, password);
     setUser(me);
+    return me;
   };
   const logout = async () => {
     await api.logout();

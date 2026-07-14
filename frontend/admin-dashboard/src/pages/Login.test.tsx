@@ -19,7 +19,7 @@ function renderLogin() {
 
 describe("Login", () => {
   it("submits entered credentials", async () => {
-    loginMock.mockResolvedValueOnce(undefined);
+    loginMock.mockResolvedValueOnce({ email: "admin@x.local", role: "admin" });
     renderLogin();
     await userEvent.type(screen.getByLabelText(/email/i), "admin@x.local");
     await userEvent.type(screen.getByLabelText(/password/i), "pw");
