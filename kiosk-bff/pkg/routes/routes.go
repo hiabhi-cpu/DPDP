@@ -13,8 +13,7 @@ import (
 
 // Deps bundles what the routes need.
 type Deps struct {
-	OTP       *handlers.Proxy
-	Consent   *handlers.Proxy
+	Claim     *handlers.ClaimHandler
 	StaticDir string // built PWA; empty disables static serving (dev uses the Vite server)
 }
 
@@ -26,9 +25,8 @@ func Setup(r *gin.Engine, d Deps) {
 
 	api := r.Group("/kiosk/api")
 	{
-		api.POST("/otp/send", func(c *gin.Context) { d.OTP.ForwardPost(c, "/api/v1/otp/send") })
-		api.POST("/otp/verify", func(c *gin.Context) { d.OTP.ForwardPost(c, "/api/v1/otp/verify") })
-		api.POST("/consent/capture", func(c *gin.Context) { d.Consent.ForwardPost(c, "/api/v1/consent/capture") })
+		api.POST("/claim/resolve", d.Claim.Resolve)
+		api.POST("/consent/capture", d.Claim.Capture)
 	}
 
 	if d.StaticDir != "" {

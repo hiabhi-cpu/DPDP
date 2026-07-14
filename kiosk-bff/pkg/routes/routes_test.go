@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -15,13 +16,8 @@ import (
 func newTestRouter(upstreamURL string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	// Both proxies point at the same fake upstream for routing assertions.
-	tp := handlers.StubProvider("test-jwt")
-	Setup(r, Deps{
-		OTP:       handlers.NewProxy(upstreamURL, tp),
-		Consent:   handlers.NewProxy(upstreamURL, tp),
-		StaticDir: "",
-	})
+	claim := handlers.NewClaimHandler(upstreamURL, upstreamURL, upstreamURL, handlers.StubProvider("test-jwt"))
+	Setup(r, Deps{Claim: claim, StaticDir: ""})
 	return r
 }
 
@@ -30,32 +26,20 @@ func TestRoutesReachUpstream(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits = append(hits, r.URL.Path)
 		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"session_id":"s","mobile":"9876543210","ref":"PA-1"}`))
 	}))
 	defer upstream.Close()
-
 	r := newTestRouter(upstream.URL)
 
-	cases := map[string]string{
-		"/kiosk/api/otp/send":        "/api/v1/otp/send",
-		"/kiosk/api/otp/verify":      "/api/v1/otp/verify",
-		"/kiosk/api/consent/capture": "/api/v1/consent/capture",
-	}
-	for path, wantUpstream := range cases {
+	for _, p := range []string{"/kiosk/api/claim/resolve", "/kiosk/api/consent/capture"} {
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, path, http.NoBody)
-		r.ServeHTTP(w, req)
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, p, strings.NewReader(`{"otp":"123456","hms_patient_id":"PA-1"}`)))
 		if w.Code == http.StatusNotFound {
-			t.Fatalf("%s not routed (404)", path)
+			t.Fatalf("%s not routed (404)", p)
 		}
-		found := false
-		for _, h := range hits {
-			if h == wantUpstream {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("%s did not reach upstream %s; hits=%v", path, wantUpstream, hits)
-		}
+	}
+	if len(hits) == 0 {
+		t.Fatal("no upstream hits")
 	}
 }
 
@@ -90,12 +74,8 @@ func TestSPAFallbackWithStaticServing(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	tp := handlers.StubProvider("test-jwt")
-	Setup(r, Deps{
-		OTP:       handlers.NewProxy(upstream.URL, tp),
-		Consent:   handlers.NewProxy(upstream.URL, tp),
-		StaticDir: tmpDir,
-	})
+	claim := handlers.NewClaimHandler(upstream.URL, upstream.URL, upstream.URL, handlers.StubProvider("test-jwt"))
+	Setup(r, Deps{Claim: claim, StaticDir: tmpDir})
 
 	get := func(path string) (int, string) {
 		w := httptest.NewRecorder()

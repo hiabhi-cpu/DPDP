@@ -31,8 +31,8 @@ func main() {
 	_ = r.SetTrustedProxies(nil)
 	r.Use(gin.Recovery(), gin.Logger())
 	routes.Setup(r, routes.Deps{
-		OTP:       handlers.NewProxy(env.NotificationServiceURL, tokens),
-		Consent:   handlers.NewProxy(env.ConsentServiceURL, tokens),
+		Claim: handlers.NewClaimHandler(
+			env.NotificationServiceURL, env.IntegrationServiceURL, env.ConsentServiceURL, tokens),
 		StaticDir: env.StaticDir,
 	})
 
