@@ -1,4 +1,4 @@
-import type { ConsentStats, AuditLogPage, EmergencyPending, Me } from "./types";
+import type { ConsentStats, AuditLogPage, EmergencyPending, Me, PendingRow } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -54,4 +54,7 @@ export const api = {
   getEmergencyPending: () => request<EmergencyPending>("GET", "/api/emergency/pending"),
   reviewEmergency: (id: string, decision: "VERIFIED" | "FLAGGED") =>
     request<{ status: string }>("POST", `/api/emergency/${id}/review`, { decision }),
+  receptionRegistrations: () => request<PendingRow[]>("GET", "/api/reception/registrations"),
+  sendCode: (hms: string) =>
+    request<{ status: string }>("POST", `/api/reception/registrations/${hms}/send-code`),
 };
