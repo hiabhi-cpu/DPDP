@@ -12,6 +12,7 @@ type Env struct {
 	AuthServiceURL         string
 	NotificationServiceURL string
 	ConsentServiceURL      string
+	IntegrationServiceURL  string
 	StaticDir              string // path to the built PWA; empty disables static serving
 }
 
@@ -23,6 +24,7 @@ func NewEnv() *Env {
 		AuthServiceURL:         mustGet("AUTH_SERVICE_URL"),
 		NotificationServiceURL: mustGet("NOTIFICATION_SERVICE_URL"),
 		ConsentServiceURL:      mustGet("CONSENT_SERVICE_URL"),
+		IntegrationServiceURL:  getOrDefault("INTEGRATION_SERVICE_URL", "http://localhost:9009"),
 		StaticDir:              os.Getenv("STATIC_DIR"),
 	}
 }
@@ -33,4 +35,11 @@ func mustGet(key string) string {
 		panic(fmt.Sprintf("bootstrap: required env var %q is not set", key))
 	}
 	return v
+}
+
+func getOrDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { NOTICE_TEXT, PURPOSES } from "../data/notice";
 
-export function Consent({ busy, error, onConfirm }: {
+export function Consent({ busy, error, name, onConfirm }: {
   busy: boolean;
   error: string;
+  name: string;
   onConfirm: (purposes: string[]) => void;
 }) {
   // Purposes start granted; the patient unchecks to decline.
@@ -15,6 +16,7 @@ export function Consent({ busy, error, onConfirm }: {
 
   return (
     <section className="card">
+      {name && <p className="greeting">Welcome, {name}</p>}
       <h2>Consent notice</h2>
       <p className="notice">{NOTICE_TEXT}</p>
       <ul className="purposes">

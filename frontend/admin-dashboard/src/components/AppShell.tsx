@@ -13,9 +13,15 @@ export function AppShell() {
       <header className={styles.bar}>
         <span className={styles.brand}>Consent Manager</span>
         <nav className={styles.nav}>
-          <NavLink to="/" end className={cls}>Dashboard</NavLink>
-          <NavLink to="/audit" className={cls}>Audit</NavLink>
-          <NavLink to="/emergency" className={cls}>Emergency</NavLink>
+          {user?.role === "reception" ? (
+            <NavLink to="/reception" className={cls}>Consent queue</NavLink>
+          ) : (
+            <>
+              <NavLink to="/" end className={cls}>Dashboard</NavLink>
+              <NavLink to="/audit" className={cls}>Audit</NavLink>
+              <NavLink to="/emergency" className={cls}>Emergency</NavLink>
+            </>
+          )}
         </nav>
         <span className={styles.spacer} />
         <span className={styles.user}>{user?.email}</span>

@@ -36,3 +36,11 @@ export interface ReviewItem {
 export interface EmergencyPending { pending: ReviewItem[]; total: number; }
 
 export interface Me { email: string; role: string; }
+
+export interface PendingRow {
+  hms_patient_id: string;
+  name: string;
+  mobile: string; // masked by the server
+  status: "PENDING" | "CODE_SENT" | "DONE";
+  registered_at: string;
+}

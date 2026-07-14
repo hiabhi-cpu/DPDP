@@ -1,35 +1,38 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { sendOtp, verifyOtp, capture, ApiError } from "./kiosk";
+import { resolveClaim, capture, ApiError } from "./kiosk";
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("kiosk api", () => {
-  it("posts mobile to /kiosk/api/otp/send and returns reference_id", async () => {
+  it("resolveClaim posts the otp and returns the claim", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ reference_id: "ref-1" }), { status: 200 }),
+      new Response(
+        JSON.stringify({ session_id: "sess-1", mobile: "9999999999", name: "Asha Rao", hms_patient_id: "PA-1" }),
+        { status: 200 },
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const out = await sendOtp("9999999999");
+    const out = await resolveClaim("123456");
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("/kiosk/api/otp/send");
-    expect(JSON.parse(init.body)).toEqual({ mobile: "9999999999" });
-    expect(out.reference_id).toBe("ref-1");
+    expect(url).toBe("/kiosk/api/claim/resolve");
+    expect(JSON.parse(init.body)).toEqual({ otp: "123456" });
+    expect(out).toEqual({ session_id: "sess-1", mobile: "9999999999", name: "Asha Rao", hms_patient_id: "PA-1" });
   });
 
-  it("throws ApiError on non-2xx", async () => {
+  it("resolveClaim throws ApiError on a non-2xx", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: "invalid or expired OTP" }), { status: 401 }),
+      new Response(JSON.stringify({ error: "code not recognized" }), { status: 401 }),
     ));
-    await expect(verifyOtp("9999999999", "ref-1", "000000")).rejects.toBeInstanceOf(ApiError);
+    await expect(resolveClaim("000000")).rejects.toBeInstanceOf(ApiError);
   });
 
-  it("capture posts session_id + purposes", async () => {
+  it("capture posts session_id + purposes + hms_patient_id", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 201 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await capture("9999999999", "sess-1", ["treatment"]);
+    await capture("9999999999", "sess-1", ["treatment"], "PA-1");
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/kiosk/api/consent/capture");
@@ -37,6 +40,7 @@ describe("kiosk api", () => {
       mobile: "9999999999",
       session_id: "sess-1",
       purposes: ["treatment"],
+      hms_patient_id: "PA-1",
     });
   });
 });
