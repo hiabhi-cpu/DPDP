@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,8 +36,8 @@ func NewClaimHandler(notificationBase, integrationBase, consentBase string, toke
 	}
 }
 
-func (h *ClaimHandler) do(c *gin.Context, method, url string, body []byte) (*http.Response, error) {
-	tok, err := h.token.Token(c.Request.Context())
+func (h *ClaimHandler) do(ctx context.Context, method, url string, body []byte) (*http.Response, error) {
+	tok, err := h.token.Token(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("token: %w", err)
 	}
@@ -44,7 +45,7 @@ func (h *ClaimHandler) do(c *gin.Context, method, url string, body []byte) (*htt
 	if body != nil {
 		rdr = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(c.Request.Context(), method, url, rdr)
+	req, err := http.NewRequestWithContext(ctx, method, url, rdr)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +66,7 @@ func (h *ClaimHandler) Resolve(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bad request"})
 		return
 	}
-	resp, err := h.do(c, http.MethodPost, h.notificationBase+"/internal/v1/otp/claim/resolve", otpBody)
+	resp, err := h.do(c.Request.Context(), http.MethodPost, h.notificationBase+"/internal/v1/otp/claim/resolve", otpBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "code service unavailable"})
 		return
@@ -93,7 +94,7 @@ func (h *ClaimHandler) Resolve(c *gin.Context) {
 
 	// Best-effort name lookup — an outage here must not fail a verified resolve.
 	name := ""
-	if reg, err := h.do(c, http.MethodGet, h.integrationBase+"/internal/v1/registrations/"+claim.Ref, nil); err == nil {
+	if reg, err := h.do(c.Request.Context(), http.MethodGet, h.integrationBase+"/internal/v1/registrations/"+claim.Ref, nil); err == nil {
 		if reg.StatusCode == http.StatusOK {
 			var r struct {
 				Name string `json:"name"`
@@ -122,7 +123,7 @@ func (h *ClaimHandler) Capture(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bad request"})
 		return
 	}
-	resp, err := h.do(c, http.MethodPost, h.consentBase+"/api/v1/consent/capture", body)
+	resp, err := h.do(c.Request.Context(), http.MethodPost, h.consentBase+"/api/v1/consent/capture", body)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "consent service unavailable"})
 		return
@@ -135,7 +136,9 @@ func (h *ClaimHandler) Capture(c *gin.Context) {
 			HMSPatientID string `json:"hms_patient_id"`
 		}
 		if json.Unmarshal(body, &req) == nil && req.HMSPatientID != "" {
-			h.markDone(c, req.HMSPatientID)
+			// Detached + Background context: the DONE mark is best-effort bookkeeping
+			// and must not add latency to (or be cancelled by) the patient's response.
+			go h.markDone(req.HMSPatientID)
 		}
 	}
 
@@ -146,8 +149,8 @@ func (h *ClaimHandler) Capture(c *gin.Context) {
 	c.Data(resp.StatusCode, ct, respBody)
 }
 
-func (h *ClaimHandler) markDone(c *gin.Context, hms string) {
-	sr, err := h.do(c, http.MethodPost, h.integrationBase+"/internal/v1/registrations/"+hms+"/status",
+func (h *ClaimHandler) markDone(hms string) {
+	sr, err := h.do(context.Background(), http.MethodPost, h.integrationBase+"/internal/v1/registrations/"+hms+"/status",
 		[]byte(`{"status":"DONE"}`))
 	if err != nil {
 		log.Warnf("kiosk-bff: DONE status update failed for hms=%s: %v", hms, err)

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -91,7 +92,9 @@ func TestResolveNameLookupFailureIsNonFatal(t *testing.T) {
 
 func TestCaptureFiresDoneOn201(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	var doneCalled bool
+	// markDone runs in a detached goroutine (best-effort, must not block the
+	// patient's response), so wait for it on a channel rather than reading a bool.
+	done := make(chan struct{}, 1)
 	consent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"id":"c-1","hms_patient_id":"PA-1"}`))
@@ -103,7 +106,7 @@ func TestCaptureFiresDoneOn201(t *testing.T) {
 			if !strings.Contains(string(b), "DONE") {
 				t.Errorf("status body = %s", b)
 			}
-			doneCalled = true
+			done <- struct{}{}
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -119,7 +122,9 @@ func TestCaptureFiresDoneOn201(t *testing.T) {
 	if w.Code != http.StatusCreated {
 		t.Fatalf("code = %d, want 201", w.Code)
 	}
-	if !doneCalled {
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
 		t.Fatal("expected integration DONE status call after 201 capture")
 	}
 }
