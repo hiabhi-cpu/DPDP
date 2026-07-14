@@ -27,18 +27,22 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return (text ? JSON.parse(text) : {}) as T;
 }
 
-export function sendOtp(mobile: string): Promise<{ reference_id: string }> {
-  return post("/kiosk/api/otp/send", { mobile });
-}
-
-export function verifyOtp(
-  mobile: string,
-  referenceId: string,
+export function resolveClaim(
   otp: string,
-): Promise<{ session_id: string }> {
-  return post("/kiosk/api/otp/verify", { mobile, reference_id: referenceId, otp });
+): Promise<{ session_id: string; mobile: string; name: string; hms_patient_id: string }> {
+  return post("/kiosk/api/claim/resolve", { otp });
 }
 
-export function capture(mobile: string, sessionId: string, purposes: string[]): Promise<void> {
-  return post("/kiosk/api/consent/capture", { mobile, session_id: sessionId, purposes });
+export function capture(
+  mobile: string,
+  sessionId: string,
+  purposes: string[],
+  hmsPatientId: string,
+): Promise<void> {
+  return post("/kiosk/api/consent/capture", {
+    mobile,
+    session_id: sessionId,
+    purposes,
+    hms_patient_id: hmsPatientId,
+  });
 }

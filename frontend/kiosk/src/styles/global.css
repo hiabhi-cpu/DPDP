@@ -47,3 +47,13 @@ button.primary {
 
 .error { color: #b00020; margin: 0; }
 .notice { line-height: 1.5; }
+
+.code-input {
+  font-size: clamp(1.5rem, 8vw, 2.5rem);
+  letter-spacing: 0.4em;
+  text-align: center;
+  width: 100%;
+  padding: 0.5em;
+  min-height: 44px;
+}
+.greeting { font-weight: 600; margin-bottom: 0.5rem; }
