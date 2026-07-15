@@ -15,6 +15,7 @@ services:
       AUTH_SERVICE_URL: "http://auth-service:9006"
       NOTIFICATION_SERVICE_URL: "http://notification-service:9004"
       CONSENT_SERVICE_URL: "http://consent-service:9000"
+      INTEGRATION_SERVICE_URL: "http://integration-service:9009"
     ports:
       - "9008:9008"
     volumes:

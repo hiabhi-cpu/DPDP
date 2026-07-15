@@ -19,6 +19,8 @@ services:
       CONSENT_SERVICE_URL: "http://consent-service:9000"
       AUDIT_SERVICE_URL: "http://audit-service:9001"
       EMERGENCY_SERVICE_URL: "http://emergency-service:9005"
+      INTEGRATION_URL: "http://integration-service:9009"
+      NOTIFICATION_URL: "http://notification-service:9004"
       SESSION_TTL: "8h"
       COOKIE_SECURE: "false"
     ports:
