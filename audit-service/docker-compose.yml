@@ -10,6 +10,7 @@ services:
       context: ..
       dockerfile: audit-service/Dockerfile
     environment:
+      TZ: ${TZ:-Asia/Kolkata}
       AUDIT_SERVICE_PORT: "9001"
       DATABASE_URL: "postgres://dpdp_app:dpdp_app_local_dev_pw@postgres:5432/dpdp?sslmode=disable"
       JWT_PUBLIC_KEY_PATH: /keys/auth_public.pem

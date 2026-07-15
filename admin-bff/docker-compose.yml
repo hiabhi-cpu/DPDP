@@ -11,6 +11,7 @@ services:
       context: ..
       dockerfile: admin-bff/Dockerfile
     environment:
+      TZ: ${TZ:-Asia/Kolkata}
       ADMIN_BFF_PORT: "9007"
       DATABASE_URL: "postgres://dpdp_app:dpdp_app_local_dev_pw@postgres:5432/dpdp?sslmode=disable"
       REDIS_URL: "redis://redis:6379/0"

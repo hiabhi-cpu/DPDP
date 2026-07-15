@@ -10,6 +10,7 @@ services:
       context: ..
       dockerfile: notification-service/Dockerfile
     environment:
+      TZ: ${TZ:-Asia/Kolkata}
       NOTIFICATION_SERVICE_PORT: "9004"
       REDIS_URL: "redis://redis:6379/0"
       JWT_PUBLIC_KEY_PATH: /keys/auth_public.pem

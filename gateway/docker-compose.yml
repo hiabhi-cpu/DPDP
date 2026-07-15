@@ -6,6 +6,8 @@ services:
   gateway:
     image: caddy:2-alpine
     container_name: dpdp-gateway
+    # No TZ here on purpose: the caddy image ships no tzdata (TZ would be inert),
+    # and Caddy logs `ts` as a Unix epoch — unambiguous, no timezone to set.
     ports:
       - "8080:8080"
     volumes:
