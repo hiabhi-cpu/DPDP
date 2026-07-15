@@ -54,18 +54,22 @@ failed.
 
 ### Retry
 
-**Location:** the kiosk PWA's `post()` in `frontend/kiosk/src/api/kiosk.ts` — not
-kiosk-bff. The flaky hop is browser→gateway over hospital WiFi. The
-bff→consent-service hop is a wired datacenter link that already has a 10s client
-timeout and returns 502 on failure; retrying there would add attempts on the leg
-that rarely breaks while leaving the leg that does break uncovered.
+**Location:** the kiosk PWA (`frontend/kiosk/src/api/kiosk.ts`), not kiosk-bff. The
+flaky hop is browser→gateway over hospital WiFi. The bff→consent-service hop is a
+wired datacenter link that already has a 10s client timeout and returns 502 on
+failure; retrying there would add attempts on the leg that rarely breaks while
+leaving the leg that does break uncovered.
 
-**Opt-in:** `post()` takes an optional retry flag. Only `capture()` passes it.
+**Split:** the per-attempt timeout goes in `post()` unconditionally — a hung
+resolve is no better than a hung capture. The retry loop goes in `capture()`.
 
-**`resolveClaim()` stays single-shot.** Resolve is protected by a per-hospital
-resolve cap (B1). If a resolve request landed but its response was lost, the cap
-was already consumed — an auto-retry burns another and can 429 the whole hospital.
-A failed resolve is cheap to recover: the code is still on the patient's phone.
+No retry flag threaded through `post()`: a parameter with one caller is config
+nobody sets. Putting the loop in `capture()` means **`resolveClaim()` cannot retry
+by construction**, which is the property we want — resolve is protected by a
+per-hospital resolve cap (B1), and if a resolve request landed but its response was
+lost, the cap was already consumed; an auto-retry burns another and can 429 the
+whole hospital. A failed resolve is cheap to recover anyway: the code is still on
+the patient's phone.
 
 **Budget:** 3 attempts total (the initial request + 2 retries), 5s per-attempt
 timeout, 1s fixed gap between attempts.
@@ -98,18 +102,14 @@ now-consumed session. The retry leans entirely on #8.
 
 ### Error mapping
 
-Replace the single shared `msg()` with two mappers, one per step — the steps have
-genuinely different vocabularies.
+**The code step keeps today's `msg()` unchanged.** Only the consent step gets a new
+mapper. The dishonest message is only harmful on the consent step, where a blip can
+send the patient back to reception for a consent already in the vault. On the code
+step every failure resolves the same way — the patient asks reception to resend —
+so "Code not recognized" is imprecise but leads to the right action, and no vault
+write is at stake.
 
-**Code step:**
-
-| Status | Message |
-|---|---|
-| 401 | "Code not recognized — please ask the front desk to resend." (today's text) |
-| 429 | "Too many attempts — please wait a moment." |
-| anything else | generic "Something went wrong. Please try again." |
-
-**Consent step:**
+**Consent step** gets `consentError()`:
 
 | Status | Message |
 |---|---|
@@ -120,6 +120,12 @@ genuinely different vocabularies.
 Map status codes rather than surfacing the server's `error` string: those strings
 are written for developers ("otp session invalid or expired — verify OTP first")
 and are not sentences to show a patient.
+
+> **Accepted narrowing (2026-07-15, ponytail-review).** An earlier draft also gave
+> the code step a 429 message ("Too many attempts — please wait"). Cut: it is new
+> behavior rather than a fix, and it was the only thing forcing two mappers. A
+> resolve-cap 429 still reads as "Code not recognized" today. Revisit if pilot
+> reception reports patients bouncing on a blown cap.
 
 ## Out of scope — named gaps
 
@@ -138,10 +144,17 @@ Extend the existing vitest files; no new test infrastructure.
 `frontend/kiosk/src/api/kiosk.test.ts`:
 - a 503 followed by a 201 succeeds after one retry (2 fetch calls)
 - a 403 throws immediately (exactly 1 fetch call)
-- a per-attempt timeout triggers a retry
-- `resolveClaim` never retries (1 fetch call on a 503)
+- `post()` passes a `signal` on the fetch init
 
 Backoff runs under `vi.useFakeTimers()` so the suite does not sleep.
+
+The signal assertion is deliberately one line, not a timing test: whether
+`AbortSignal.timeout` actually fires is the browser's behavior to get right, and a
+fake-timer test of it mostly fights the platform. What can realistically break on
+our side is forgetting to pass the signal to `fetch` — so that is what we check.
+
+No test that `resolveClaim` skips the retry: with the loop in `capture()`, resolve
+cannot retry, and asserting the absence of code that does not exist tests nothing.
 
 `frontend/kiosk/src/App.test.tsx`:
 - a capture 502 does **not** render "ask the front desk"
@@ -149,8 +162,8 @@ Backoff runs under `vi.useFakeTimers()` so the suite does not sleep.
 
 ## Files touched
 
-- `frontend/kiosk/src/api/kiosk.ts` — retry + timeout in `post()`, opt-in from `capture()`
-- `frontend/kiosk/src/App.tsx` — split error mapping
+- `frontend/kiosk/src/api/kiosk.ts` — timeout in `post()`, retry loop in `capture()`
+- `frontend/kiosk/src/App.tsx` — add `consentError()`; `msg()` unchanged
 - `frontend/kiosk/src/api/kiosk.test.ts` — retry tests
 - `frontend/kiosk/src/App.test.tsx` — error-mapping tests
 
