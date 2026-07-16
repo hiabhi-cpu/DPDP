@@ -3,3 +3,4 @@
 .action { padding: 6px 12px; cursor: pointer; }
 .badge { padding: 2px 8px; border-radius: 999px; font-size: 0.85em; background: #eee; }
 .badge[data-status="CODE_SENT"] { background: #e3f0ff; }
+.badge[data-status="CONSENTED"] { background: #e6f4ea; }

@@ -42,5 +42,6 @@ export interface PendingRow {
   name: string;
   mobile: string; // masked by the server
   status: "PENDING" | "CODE_SENT" | "DONE";
+  consented: boolean; // already has an active consent — no action needed
   registered_at: string;
 }
