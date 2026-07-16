@@ -108,6 +108,24 @@ type CheckConsentResponse struct {
 	Reason    string     `json:"reason,omitempty"`
 }
 
+// ActiveConsentRequest is the body for POST /api/v1/consent/active — the batch,
+// purpose-agnostic "which of these patients already have consent?" lookup behind
+// the reception queue's already-consented badge. Patients are identified by
+// mobile because that is what Capture's block keys on (via patient_key); an
+// hms_patient_id lookup could disagree with it.
+//
+// The 200-entry cap is input validation at a trust boundary, not tuning. Mobiles
+// are in the body, never a URL, so raw mobiles never reach logs.
+type ActiveConsentRequest struct {
+	Mobiles []string `json:"mobiles" binding:"required,min=1,max=200,dive,len=10"`
+}
+
+// ActiveConsentResponse returns the subset of the requested mobiles that have at
+// least one active purpose, in the order they were requested.
+type ActiveConsentResponse struct {
+	Active []string `json:"active"`
+}
+
 // WithdrawConsentRequest is the body for POST /api/consent/v1/withdraw.
 // Purposes lists which purposes to withdraw; empty means withdraw all currently
 // active purposes.
