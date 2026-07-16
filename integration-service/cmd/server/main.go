@@ -16,6 +16,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/hiabhi-cpu/integration-service/bootstrap"
+	"github.com/hiabhi-cpu/integration-service/pkg/pending/consent"
 	"github.com/hiabhi-cpu/integration-service/pkg/pending/controller"
 	"github.com/hiabhi-cpu/integration-service/pkg/pending/repository"
 	"github.com/hiabhi-cpu/integration-service/pkg/routes"
@@ -38,7 +39,8 @@ func main() {
 
 	store := repository.NewRedisStore(redisClient)
 	webhookHandler := controller.NewWebhookHandler(store)
-	readHandler := controller.NewReadHandler(store)
+	consentClient := consent.NewClient(env.ConsentServiceURL)
+	readHandler := controller.NewReadHandler(store, consentClient)
 
 	gin.SetMode(gin.ReleaseMode)
 

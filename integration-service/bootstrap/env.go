@@ -14,6 +14,8 @@ type Env struct {
 	ServerCertPath   string // mTLS server cert
 	ServerKeyPath    string // mTLS server key
 	HospitalCAPath   string // CA that signs hospital client certs
+
+	ConsentServiceURL string // consent-service base URL for the "already consented?" lookup
 }
 
 func NewEnv() *Env {
@@ -25,6 +27,8 @@ func NewEnv() *Env {
 		ServerCertPath:   mustGet("MTLS_SERVER_CERT"),
 		ServerKeyPath:    mustGet("MTLS_SERVER_KEY"),
 		HospitalCAPath:   mustGet("MTLS_HOSPITAL_CA"),
+
+		ConsentServiceURL: mustGet("CONSENT_SERVICE_URL"),
 	}
 }
 
