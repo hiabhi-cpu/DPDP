@@ -55,7 +55,13 @@ func TestActiveMobiles_HappyPath(t *testing.T) {
 
 func TestActiveMobiles_NonOKStatusReturnsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A valid, decodable body on the 500 isolates the branch under test: only
+		// the status check can fail this test. (An empty body would ALSO fail
+		// json.Decode with io.EOF, so the test would pass even if the status check
+		// were deleted — that's not what we're testing here.)
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"active":[]}`))
 	}))
 	defer srv.Close()
 

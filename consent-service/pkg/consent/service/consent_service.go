@@ -308,6 +308,13 @@ func (s *consentService) Check(ctx context.Context, hospitalID, ip string, req *
 func (s *consentService) ActiveMobiles(ctx context.Context, hospitalID string, mobiles []string) ([]string, error) {
 	keys := make([]string, 0, len(mobiles))
 	mobileToKey := make(map[string]string, len(mobiles))
+	// ponytail: patientKeyFor is called once per mobile here, and each call fetches
+	// the system salt and hospital key. Free today only because MockProvider caches
+	// both via sync.Once — a real provider (e.g. AWS Secrets Manager) turns a
+	// 200-mobile batch into ~400 remote fetches per poll. Ceiling: fine as long as
+	// secretsProvider is a caching in-memory provider. Upgrade path: hoist the
+	// salt/hospital-key fetch out of this loop (fetch once before the loop) if a
+	// non-caching provider lands.
 	for _, m := range mobiles {
 		k, err := s.patientKeyFor(ctx, hospitalID, m)
 		if err != nil {

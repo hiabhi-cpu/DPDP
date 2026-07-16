@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { Reception } from "./Reception";
 
@@ -25,6 +25,10 @@ const consentedRow = {
 
 describe("Reception queue", () => {
   beforeEach(() => vi.clearAllMocks());
+  // Restore real timers here, not at the end of each test body: if an assertion
+  // throws mid-test, fake-timer mode would otherwise leak into subsequent tests
+  // and cause confusing cascading failures.
+  afterEach(() => vi.useRealTimers());
 
   it("lists PENDING/CODE_SENT rows, hides DONE, masks mobile, Send vs Resend", async () => {
     (api.receptionRegistrations as any).mockResolvedValue(rows);
@@ -77,8 +81,6 @@ describe("Reception queue", () => {
       await vi.advanceTimersByTimeAsync(6_000);
     });
     await waitFor(() => expect(screen.queryByText("Meera")).not.toBeInTheDocument());
-
-    vi.useRealTimers();
   });
 
   it("keeps a not-yet-consented row on the board indefinitely", async () => {
@@ -91,7 +93,5 @@ describe("Reception queue", () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
     expect(screen.getByText("Asha")).toBeInTheDocument();
-
-    vi.useRealTimers();
   });
 });
