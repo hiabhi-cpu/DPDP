@@ -33,10 +33,21 @@ export function App() {
     return () => clearTimeout(t);
   }, [step]);
 
-  function msg(e: unknown): string {
+  // Errors are mapped per step: only the code step may blame the code. Past
+  // resolve the code is already proven good, so a capture failure must never
+  // send the patient back to the front desk for a pointless resend.
+  function codeError(e: unknown): string {
     return e instanceof ApiError
       ? "Code not recognized — please ask the front desk to resend."
       : "Something went wrong. Please try again.";
+  }
+
+  function consentError(e: unknown): string {
+    if (!(e instanceof ApiError)) return "Something went wrong. Please try again.";
+    // 409 = an active consent already exists for this patient (a re-visit).
+    if (e.status === 409) return "You have already given consent — nothing more to do.";
+    // Anything else: stay generic, never surface an internal error on a kiosk.
+    return "We could not save your consent. Please ask the front desk for help.";
   }
 
   async function onCode(otp: string) {
@@ -50,7 +61,7 @@ export function App() {
       setHmsPatientId(r.hms_patient_id);
       setStep("consent");
     } catch (e) {
-      setError(msg(e));
+      setError(codeError(e));
     } finally {
       setBusy(false);
     }
@@ -63,7 +74,7 @@ export function App() {
       await capture(mobile, sessionId, purposes, hmsPatientId);
       setStep("done");
     } catch (e) {
-      setError(msg(e));
+      setError(consentError(e));
     } finally {
       setBusy(false);
     }
