@@ -18,6 +18,15 @@ type Client struct {
 	client  *http.Client
 }
 
+// chunkSize mirrors consent-service's own binding cap on this endpoint
+// (Mobiles field tagged binding:"...,max=200,..." in
+// consent-service/pkg/consent/model/consent.go). consent-service rejects the
+// WHOLE batch with 400 above that cap, and store.List's 72h Redis window is
+// unbounded — it can hold far more than 200 records once a hospital has been
+// live a few days. So the sender, not just the trust boundary, must respect
+// the cap: split into chunks here and merge the results.
+const chunkSize = 200
+
 // NewClient returns a Client for consent-service at baseURL.
 //
 // The 3s timeout is deliberately shorter than the reception queue's 5s poll
@@ -36,7 +45,41 @@ func NewClient(baseURL string) *Client {
 // audience claim, so the token that authorised this request already authorises the
 // downstream call — no second credential, and no privilege gained: admin-bff's
 // token can call consent-service directly anyway.
+//
+// mobiles is deduped before chunking (two staged records — e.g. family members —
+// can share a mobile) and sent in batches of at most chunkSize, merging the
+// per-chunk results into one map. The map is keyed by mobile, so deduping the
+// request cannot lose information: the caller looks up consented[r.Mobile] per
+// row, and a mobile present in any chunk's response ends up true in the merge.
 func (c *Client) ActiveMobiles(ctx context.Context, authHeader string, mobiles []string) (map[string]bool, error) {
+	seen := make(map[string]bool, len(mobiles))
+	unique := make([]string, 0, len(mobiles))
+	for _, m := range mobiles {
+		if !seen[m] {
+			seen[m] = true
+			unique = append(unique, m)
+		}
+	}
+
+	active := make(map[string]bool, len(unique))
+	for start := 0; start < len(unique); start += chunkSize {
+		end := start + chunkSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+		got, err := c.activeMobilesChunk(ctx, authHeader, unique[start:end])
+		if err != nil {
+			return nil, err
+		}
+		for m := range got {
+			active[m] = true
+		}
+	}
+	return active, nil
+}
+
+// activeMobilesChunk sends one request for at most chunkSize mobiles.
+func (c *Client) activeMobilesChunk(ctx context.Context, authHeader string, mobiles []string) (map[string]bool, error) {
 	body, err := json.Marshal(map[string][]string{"mobiles": mobiles})
 	if err != nil {
 		return nil, fmt.Errorf("consent.ActiveMobiles: marshal: %w", err)
