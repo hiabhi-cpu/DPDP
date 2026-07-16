@@ -10,6 +10,7 @@ services:
       context: ..
       dockerfile: kiosk-bff/Dockerfile
     environment:
+      TZ: ${TZ:-Asia/Kolkata}
       KIOSK_BFF_PORT: "9008"
       HOSPITAL_API_KEY: ${HOSPITAL_API_KEY:-TEST-HOSPITAL-API-KEY-LOCAL-DEV-001}
       AUTH_SERVICE_URL: "http://auth-service:9006"

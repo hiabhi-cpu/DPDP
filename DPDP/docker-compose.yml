@@ -19,6 +19,10 @@ services:
     container_name: dpdp-postgres
     restart: unless-stopped
     environment:
+      # Server + log timezone. Safe: every column is TIMESTAMPTZ, which stores an
+      # absolute instant — this changes display/logs only, not stored values.
+      TZ: ${TZ:-Asia/Kolkata}
+      PGTZ: ${TZ:-Asia/Kolkata}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
@@ -60,6 +64,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      TZ: ${TZ:-Asia/Kolkata}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
     volumes:
       - ./scripts/db:/scripts/db:ro
@@ -77,6 +82,8 @@ services:
     image: redis:7-alpine
     container_name: dpdp-redis
     restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Kolkata}
     ports:
       - "${REDIS_PORT:-6379}:6379"
     # No persistence for local dev — faster startup, no AOF overhead

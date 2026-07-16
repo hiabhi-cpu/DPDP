@@ -298,18 +298,35 @@ from audit / stats / emergency.
 ```bash
 for p in 9006 9001 9004 9000 9005 9009 9007 9008; do curl -sf localhost:$p/health && echo " :$p ok"; done
 
-# hospital token → capture → check
+# hospital token → send OTP → verify → capture → check
+# `session_id` MUST be a live OTP-verified session: consent-service calls
+# notification's /internal/v1/otp/session/validate before writing any vault row,
+# so a made-up id is 403 "otp session invalid or expired — verify OTP first".
 TOKEN=$(curl -s localhost:9006/v1/auth/token \
   -H 'Content-Type: application/json' \
   -d '{"api_key":"TEST-HOSPITAL-API-KEY-LOCAL-DEV-001"}' | jq -r .token)
+M=9000000001
+
+REF=$(curl -s localhost:9004/api/v1/otp/send -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d "{\"mobile\":\"$M\"}" | jq -r .reference_id)
+
+# SMS_PROVIDER=mock ⇒ the OTP lands in the log file, not stdout (see §8).
+OTP=$(grep -ah "MOCK SMS" /data/logs/notification-service/$(date +%F)/app.log |
+  tail -1 | sed -n 's/.*OTP: \([0-9]\{6\}\).*/\1/p')
+
+SID=$(curl -s localhost:9004/api/v1/otp/verify -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"reference_id\":\"$REF\",\"otp\":\"$OTP\",\"mobile\":\"$M\"}" | jq -r .session_id)
 
 curl -s localhost:9000/api/v1/consent/capture -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"mobile":"9000000001","session_id":"smoke-1","purposes":["treatment"],"hms_patient_id":"PA-SMOKE-1"}'
+  -d "{\"mobile\":\"$M\",\"session_id\":\"$SID\",\"purposes\":[\"treatment\"],\"hms_patient_id\":\"PA-SMOKE-1\"}"
+# → 201 {"id":…,"type":"CONSENT_GIVEN","status":"ACTIVE",…}
 
 curl -s localhost:9000/api/v1/consent/check -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"mobile":"9000000001","purpose":"treatment"}'
+  -d "{\"mobile\":\"$M\",\"purpose\":\"treatment\"}"
+# → {"allowed":true,"consent_id":…}
 ```
 
 ### Step 4b — front-desk consent flow (Spec A+B) end-to-end
@@ -336,7 +353,11 @@ curl -sS -b $J -H "X-CSRF-Token: $C2" -X POST \
   localhost:9007/api/reception/registrations/PA-SMOKE/send-code   # → {"status":"sent"}
 
 # 3. Read the code from the mock SMS log, then complete at the kiosk
-OTP=$(grep -arh "MOCK SMS" /data/logs/notification-service | tail -1 | grep -oE '[0-9]{6}')
+#    Logs are date-partitioned files (LOG_DIR/<service>/<date>/app.log), NOT stdout —
+#    scope to today's file: `grep -r … | tail -1` walks dirs in readdir order, not
+#    chronologically, and can hand back a stale OTP from an earlier day.
+OTP=$(grep -ah "MOCK SMS" /data/logs/notification-service/$(date +%F)/app.log |
+  tail -1 | sed -n 's/.*OTP: \([0-9]\{6\}\).*/\1/p')
 RES=$(curl -sS -X POST localhost:9008/kiosk/api/claim/resolve \
   -H 'Content-Type: application/json' -d "{\"otp\":\"$OTP\"}")
 echo "$RES"   # → {session_id, mobile, name:"Priya Shah", hms_patient_id:"PA-SMOKE"}

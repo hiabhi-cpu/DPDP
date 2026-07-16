@@ -8,6 +8,7 @@ services:
       context: ..
       dockerfile: integration-service/Dockerfile
     environment:
+      TZ: ${TZ:-Asia/Kolkata}
       INTEGRATION_SERVICE_PORT: "9009"
       INTEGRATION_WEBHOOK_PORT: "9443"
       REDIS_URL: "redis://redis:6379/0"

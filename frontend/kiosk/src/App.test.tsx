@@ -51,6 +51,25 @@ describe("code-only kiosk", () => {
     expect(screen.getByLabelText(/6-digit code/i)).toBeInTheDocument();
   });
 
+  it("a capture failure does NOT blame the code — an already-consented patient is told so", async () => {
+    const user = userEvent.setup();
+    mockFetchSequence([
+      // resolve succeeds — the code was fine, we reach the consent step.
+      new Response(JSON.stringify({ session_id: "sess-1", mobile: "9744411133", name: "Priya Shah", hms_patient_id: "PA-1" }), { status: 200 }),
+      // capture is rejected: the patient already has an active consent.
+      new Response(JSON.stringify({ error: "active consent already exists" }), { status: 409 }),
+    ]);
+
+    render(<App />);
+    await user.type(screen.getByLabelText(/6-digit code/i), "123456");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+    await user.click(await screen.findByRole("button", { name: /confirm/i }));
+
+    expect(await screen.findByText(/already given consent/i)).toBeInTheDocument();
+    // The code was accepted — never send this patient back to the front desk for a resend.
+    expect(screen.queryByText(/ask the front desk to resend/i)).not.toBeInTheDocument();
+  });
+
   it("layout uses no fixed pixel widths on the shell/card", () => {
     const widthPx = /(^|[^-])width:\s*\d+px/m.test(globalCss);
     expect(widthPx).toBe(false);

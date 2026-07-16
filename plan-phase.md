@@ -117,16 +117,19 @@ Ports: auth `9006` · consent `9000` · audit `9001` · emergency `9005`.
 
 ---
 
-## Phase 2 · Integrations + Offline — ⬜ not started
+## Phase 2 · Integrations — ⬜ not started
 
-**Goal:** Works with real HMS; works offline on bad WiFi.
+**Goal:** Works with real HMS; survives bad WiFi. ("Offline" dropped from the phase
+name 2026-07-15 — server-verified OTP means a kiosk with no network has nothing it
+can legitimately do; see the capture-retry row.)
 
 | Status | Tag | Task |
 |---|---|---|
 | ✅ | BE | **`integration-service` (Spec A of 2)** — **done (2026-07-13)**. mTLS webhook receiver (`POST /webhook/patient-registered`, own client-cert listener on `:9443`, `hospital_id` from cert CN — un-spoofable, not from body) + Bahmni adapter + Redis pending-registration store (`pending:{hospital}:{hms_id}`, 72h TTL, idempotent upsert, Redis-only no Postgres) + consumer-agnostic internal read API on `:9009` (hospital-JWT `middleware.JWTAuth`: `GET /internal/v1/registrations` list [mobile masked] + `/:hms_patient_id` get [raw mobile for OTP]). Pre-stages identity only — **no vault write**. Two listeners, one process; graceful shutdown; redis-aware `/health`. Dev cert tooling (`certs/gen-dev-certs.sh`, gitignored). Live-verified e2e (mTLS POST→staged→Redis→JWT read) + docker build; TDD throughout, opus final review clean. See `docs/superpowers/{specs,plans}/2026-07-13-integration-service-webhook*.md`. |
 | ✅ | BE/FE | **Front-desk-driven consent flow (Spec B of 2)** — **DONE (B1 backend + B2 UIs, 2026-07-13).** Consumes Spec A. Reception fires OTP → patient completes at any kiosk by entering the SMS code (the code IS the OTP). **B1 shipped:** notification-service hospital-scoped **OTP-claim** (`SendClaim`/`ResolveClaim`, hashed match within the hospital's active `claimset` — no plaintext codes, secrecy preserved, uniqueness-on-send, per-hospital resolve cap; hospital-JWT `/internal` endpoints); integration-service pending **status** `PENDING→CODE_SENT→DONE` (TTL-preserving set-status, status in masked list); admin-bff **reception role** (least-privilege, server-enforced) + consent-queue proxy + `send-code` orchestration; **migration 0014** adds the `reception` role. Ponytail-trimmed (claim index 3→1 Redis key; dropped supersede + HMAC capture-handle → kiosk reuses the existing capture flow). Live-verified full vertical (reception send-code → resolve → capture linked to `hms_patient_id` → check-by-HMS `allowed:true`); opus review clean. **B2 shipped:** reception queue **screen** (admin-dashboard, role-scoped nav+redirects, DONE rows hidden = completion-by-disappearance) + **code-only** kiosk PWA (walk-in mobile/OTP steps removed) + kiosk-bff `claim/resolve` (notification session + integration name lookup, reuses hospital JWT — no service-token) + **detached** best-effort `DONE` marking on capture. Live-verified kiosk-bff vertical (resolve→capture→DONE→check-by-HMS `allowed:true`); frontends vitest-covered (kiosk 6/6, admin 12/12); opus review clean. See `docs/superpowers/{specs/2026-07-13-frontdesk-consent-flow-design.md,specs/2026-07-13-frontdesk-consent-B2-uis-design.md,plans/2026-07-13-frontdesk-consent-B1-backend.md,plans/2026-07-13-frontdesk-consent-B2-uis.md}`. |
 | — | — | ~~Bahmni adapter (separate row)~~ — **folded into Spec A above** (a generic receiver isn't testable without one concrete mapping). |
-| ⬜ | mobile | Kiosk offline mode — WatermelonDB SQLite queue, idempotency keys, auto-sync on reconnect (server side already idempotent via #8) |
+| ⬜➕ | BE/FE | **Returning-patient dead-end in the reception queue** — added 2026-07-16, found in live testing. A patient who **already has an active consent** re-registers → the HMS webhook re-stages them → the queue shows them `PENDING` → reception fires a code → the patient walks to the kiosk, enters it, ticks purposes → **capture 409 `ErrActiveConsentExists`** (correct by design: `consent-service` blocks capture while any purpose is still active). Nobody upstream knows: the queue has **no idea** the patient already consented, so it burns an SMS and sends the patient on a pointless walk. This hits **every repeat visitor** — i.e. most of a real OPD day. Mitigated (not solved) 2026-07-16: the kiosk no longer mislabels the 409 as "code not recognized" and now says "you have already given consent" (commit `6d8c05b`). **Real fix:** the reception queue must know each staged patient's consent state — check by `hms_patient_id` when building the queue, then either hide those rows or badge them "Already consented — no action" and disable Send code. Needs a per-row consent lookup (consent-service `check` is per-purpose, so this likely wants a small "has any active consent" aggregate rather than N×purposes calls). **Decide before pilot** — at 3 hospitals this is daily noise, and reception will lose trust in the queue. |
+| ⬜ | mobile | **Kiosk capture retry on flaky network** — retry the capture POST reusing the same `session_id` (server already dedupes via #8) + honest consent-step error text. **Replaces** the original *"kiosk offline mode — WatermelonDB SQLite queue + auto-sync"* row, **dropped 2026-07-15**: server-verified OTP means an offline kiosk has nothing it can legitimately capture. Full reasoning + the design in `docs/superpowers/specs/2026-07-15-kiosk-capture-retry-design.md`. |
 | ⬜ | FE | `frontend/hms-widget/` — vanilla JS <50KB, PostMessage, green/yellow/red badge |
 | ✅🔺 | BE | `emergency-service` — `POST /v1/consent/emergency-override` (always allowed, never blocks), immutable `EMERGENCY_OVERRIDE` vault row (§7(b), `legal_basis=DPDP_SECTION_7B`, identity optional), own transactional outbox+relay. Steps 5–6 (patient-notify SMS, retrospective consent) deferred. |
 | ✅🔺 | BE | **Minimal DPO review queue** (API) — `GET /v1/emergency/pending` (overdue derived) + `POST /v1/emergency/:id/review` (VERIFIED/FLAGGED, already-reviewed→404). Mutable `emergency.reviews` (RLS-isolated). Coupled with the override per fix ①. **DPO dashboard UI still Phase 3.** |
@@ -149,7 +152,7 @@ Ports: auth `9006` · consent `9000` · audit `9001` · emergency `9005`.
   integration-service only receives *registration* webhooks. Confirm the HMS actually
   emits access events, or this job has nothing to diff.
 
-**Phase-2 done when:** Bahmni fires webhook → kiosk captures offline → syncs → badge in HMS.
+**Phase-2 done when:** Bahmni fires webhook → reception sends the code → kiosk captures (surviving a dropped request via retry) → badge in HMS.
 
 ---
 
@@ -238,6 +241,7 @@ From a full-project review against the DPDP Act and the code. Rows marked ➕ ab
 | §9 guardian flow (kiosk) | P2 | Hard gate before real patients |
 | Kiosk device identity | P2 | API key can't ship in the app bundle |
 | Notice-text languages (§5(3)) | P2 | Pilot patients must get notice they understand |
+| Returning-patient dead-end (queue doesn't know who already consented) — added 2026-07-16 | P2 | Found in live testing; hits every repeat visitor, wastes an SMS + a walk, erodes reception's trust in the queue |
 | Retention & erasure | P3 (design earlier) | §12 rights + Rules timelines vs append-only design |
 | Grievance redressal (§13) | P3 | Required channel before real patients |
 | Named users + RBAC | P3 | Reviewer attribution is free text today |
