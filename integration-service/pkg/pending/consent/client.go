@@ -27,11 +27,21 @@ type Client struct {
 // the cap: split into chunks here and merge the results.
 const chunkSize = 200
 
+// lookupTimeout bounds the ENTIRE chunked lookup in ActiveMobiles, not any one
+// request: a large queue can take several chunks, and http.Client.Timeout
+// alone only caps each request individually, letting the total run well past
+// it. This must stay comfortably under admin-bff's 10s proxy timeout
+// (admin-bff/pkg/handlers/proxy.go, NewProxy) so a slow consent-service
+// degrades to an unbadged reception board (fail-open) rather than admin-bff's
+// proxy timing out and the board coming back empty.
+const lookupTimeout = 3 * time.Second
+
 // NewClient returns a Client for consent-service at baseURL.
 //
-// The 3s timeout is deliberately shorter than the reception queue's 5s poll
-// interval: a slow consent-service must not make list requests pile up. On
-// timeout the caller fails open and renders the queue unbadged.
+// The 3s per-request timeout is a backstop against a single hung request; it
+// does not bound the overall chunked lookup — that's lookupTimeout, applied
+// once across all chunks in ActiveMobiles. On either the per-request or
+// overall deadline, the caller fails open and renders the queue unbadged.
 func NewClient(baseURL string) *Client {
 	return &Client{baseURL: baseURL, client: &http.Client{Timeout: 3 * time.Second}}
 }
@@ -52,6 +62,9 @@ func NewClient(baseURL string) *Client {
 // request cannot lose information: the caller looks up consented[r.Mobile] per
 // row, and a mobile present in any chunk's response ends up true in the merge.
 func (c *Client) ActiveMobiles(ctx context.Context, authHeader string, mobiles []string) (map[string]bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, lookupTimeout)
+	defer cancel()
+
 	seen := make(map[string]bool, len(mobiles))
 	unique := make([]string, 0, len(mobiles))
 	for _, m := range mobiles {

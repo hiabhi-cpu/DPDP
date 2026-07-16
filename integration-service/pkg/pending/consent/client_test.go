@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -164,6 +165,33 @@ func TestActiveMobiles_DedupesBeforeSending(t *testing.T) {
 	}
 	if !got["9876543210"] {
 		t.Fatalf("active[9876543210] = false, want true")
+	}
+}
+
+func TestActiveMobiles_CallerCtxCancelledReturnsError(t *testing.T) {
+	// Proves ctx is actually threaded into the chunk requests (not silently
+	// dropped in favour of only the client's own timeout): with the caller's
+	// ctx already expired, the very first request must fail fast rather than
+	// hang or succeed.
+	var requests int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":[]}`))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	<-ctx.Done() // guarantee it's expired before ActiveMobiles ever sees it
+
+	c := NewClient(srv.URL)
+	_, err := c.ActiveMobiles(ctx, "Bearer test-token", []string{"9876543210"})
+	if err == nil {
+		t.Fatalf("ActiveMobiles returned nil error for an already-expired ctx, want non-nil")
+	}
+	if got := atomic.LoadInt32(&requests); got > 1 {
+		t.Fatalf("server received %d requests, want at most 1", got)
 	}
 }
 
