@@ -28,6 +28,11 @@ type ConsentRepository interface {
 	// GetByIdempotencyKey returns the CONSENT_GIVEN row for a capture idempotency
 	// key (session_id), or nil if none exists.
 	GetByIdempotencyKey(ctx context.Context, hospitalID, key string) (*model.Consent, error)
+	// ActivePatientKeys returns the subset of patientKeys whose latest row has at
+	// least one ACTIVE purpose. Batch form of the question Capture asks before it
+	// blocks; used by the reception queue to badge returning patients. A key
+	// absent from the map is not active.
+	ActivePatientKeys(ctx context.Context, hospitalID string, patientKeys []string) (map[string]bool, error)
 
 	// EnqueueAudit writes a standalone audit outbox row (for reads/checks that have
 	// no domain row to piggyback on).

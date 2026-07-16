@@ -35,6 +35,18 @@ const (
 		ORDER BY version DESC LIMIT 1
 	`
 
+	// Reception-queue path: batch "which of these patients already have consent?".
+	// DISTINCT ON takes the highest-version row per patient_key — the append-only
+	// vault's current state for each. The caller applies AnyActive() to the
+	// Purposes map rather than filtering on status here, so this stays the exact
+	// question Capture asks.
+	queryLatestByPatientKeys = `
+		SELECT DISTINCT ON (patient_key) ` + consentColumns + `
+		FROM consent.consent_vault
+		WHERE hospital_id = $1 AND patient_key = ANY($2)
+		ORDER BY patient_key, version DESC
+	`
+
 	queryGetByIdempotencyKey = `
 		SELECT ` + consentColumns + `
 		FROM consent.consent_vault
