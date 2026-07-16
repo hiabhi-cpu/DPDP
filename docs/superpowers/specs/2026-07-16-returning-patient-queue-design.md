@@ -4,7 +4,7 @@
 **Status:** Approved (design), ready for implementation plan
 **Phase:** P2 (`plan-phase.md` — "Returning-patient dead-end in the reception queue")
 **Scope:** consent-service (one new endpoint), integration-service (enrich the read API),
-admin-bff (guard `SendCode`), admin-dashboard (badge + auto-hide). No schema change.
+admin-dashboard (badge + auto-hide). No schema change.
 
 ## The problem
 
@@ -54,6 +54,14 @@ back into finding 1. Getting mobiles there would need an N-call fan-out to `Get`
 **Rejected: preserve `DONE` across re-registration.** Nearly free, and wrong. The Redis TTL
 is 72h (`integration-service/pkg/pending/repository/store.go:15`) but repeat OPD visits are
 weeks apart, so the record is long gone. Fixes the rare case, misses the common one.
+
+**Rejected: a `SendCode` guard in admin-bff.** An earlier draft had `SendCode` re-check the
+mobile before firing the OTP, to close the window where the queue's view is up to 5s stale.
+It does not earn its second network call. It fires only when consent lands inside the poll
+window *and* reception clicks inside that same window — but a patient who just consented
+already had a code, so their row is `CODE_SENT` and reception would have to hit **Resend** in
+that exact 5s. And in the outage it appears to cover, `List` fails open and the guard is
+calling the same dead service, so it fails too. The badge plus a disabled button is the fix.
 
 **Auth: forward the caller's hospital JWT.** `middleware.JWTAuth` carries no audience claim
 and both services verify against the same auth-service public key
@@ -139,18 +147,7 @@ render exactly as they do today. A consent-service blip must never empty the rec
 board; the worst case degrades to current behaviour, which is a wasted SMS, not a lost
 patient.
 
-### 3. admin-bff — `SendCode` guard
-
-`SendCode` already fetches the raw mobile as step 1 (`admin-bff/pkg/handlers/reception.go:65`).
-Add a step between that and the OTP call: ask `/api/v1/consent/active` with the single
-mobile; if active, return 409 with an "already consented" message and do not fire the OTP.
-Same endpoint, batch of one.
-
-This is what actually stops the wasted SMS. The badge makes the button disabled, but the
-queue's view is up to 5s stale — this closes the race where reception clicks just as the
-patient's consent lands.
-
-### 4. admin-dashboard — badge, then vanish
+### 3. admin-dashboard — badge, then vanish
 
 A `consented` row renders badged "Already consented — no action" with **Send code
 disabled**, and disappears **15 seconds after first sighting**. Reception sees the patient
@@ -172,10 +169,9 @@ never re-armed, with a hidden-set in state driving the filter.
 - **consent-service repo:** `ActivePatientKeys` returns the latest row per key; a partially
   withdrawn patient (one purpose withdrawn, one active) still counts as active; a fully
   withdrawn patient does not; unknown mobiles are absent from the map.
-- **consent-service service:** mobiles map back to the right subset; over-cap batch is 400.
+- **consent-service service:** mobiles map back to the right subset.
 - **integration-service:** `List` sets `consented` from the checker; a checker that errors
   still returns all rows with `consented` false (fail-open).
-- **admin-bff:** `SendCode` returns 409 and fires no OTP when the mobile is active.
 - **admin-dashboard (`Reception.test.tsx`):** consented row shows the badge with Send code
   disabled; the row still disappears at 15s across two intervening 5s polls (the regression
   test for the trap above).
