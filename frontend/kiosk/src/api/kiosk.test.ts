@@ -57,4 +57,31 @@ describe("kiosk api", () => {
     const [, init] = fetchMock.mock.calls[0];
     expect(init.signal).toBeTruthy();
   });
+
+  it("capture retries a 503 and succeeds on the next attempt", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "consent service unavailable" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await capture("9999999999", "sess-1", ["treatment"], "PA-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Both attempts carry the same session_id — that is what makes the replay
+    // safe server-side (consent-service checks the key before the session verify).
+    const sessions = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).session_id);
+    expect(sessions).toEqual(["sess-1", "sess-1"]);
+    vi.useRealTimers();
+  });
+
+  it("capture does not retry a 403 — an expired session will not heal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "otp session invalid or expired — verify OTP first" }), { status: 403 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(capture("9999999999", "sess-1", ["treatment"], "PA-1")).rejects.toBeInstanceOf(ApiError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
