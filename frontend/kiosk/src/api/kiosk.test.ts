@@ -43,4 +43,18 @@ describe("kiosk api", () => {
       hms_patient_id: "PA-1",
     });
   });
+
+  it("post sends an abort signal so a hung request cannot hang forever", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ session_id: "s", mobile: "9", name: "A", hms_patient_id: "P" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await resolveClaim("123456");
+
+    // Whether the abort actually fires is the browser's job; forgetting to pass
+    // the signal is ours. That is what this asserts.
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.signal).toBeTruthy();
+  });
 });

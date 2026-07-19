@@ -7,11 +7,16 @@ export class ApiError extends Error {
   }
 }
 
+// fetch has no default timeout: without this a hung connection never settles
+// and the capture retry below never gets a chance to fire.
+const TIMEOUT_MS = 5000;
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!resp.ok) {
     let msg = `request failed (${resp.status})`;
