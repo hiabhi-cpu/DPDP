@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { resolveClaim, capture, ApiError } from "./kiosk";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("kiosk api", () => {
   it("resolveClaim posts the otp and returns the claim", async () => {
@@ -72,12 +75,44 @@ describe("kiosk api", () => {
     // safe server-side (consent-service checks the key before the session verify).
     const sessions = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).session_id);
     expect(sessions).toEqual(["sess-1", "sess-1"]);
-    vi.useRealTimers();
   });
 
   it("capture does not retry a 403 — an expired session will not heal", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ error: "otp session invalid or expired — verify OTP first" }), { status: 403 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(capture("9999999999", "sess-1", ["treatment"], "PA-1")).rejects.toBeInstanceOf(ApiError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("capture retries twice on 503 and succeeds on the 3rd attempt", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await capture("9999999999", "sess-1", ["treatment"], "PA-1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("capture stops after 3 attempts on repeated 503", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.fn()
+      .mockResolvedValue(new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(capture("9999999999", "sess-1", ["treatment"], "PA-1")).rejects.toBeInstanceOf(ApiError);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("capture does not retry a 500 — it is a bug, not a blip", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "internal server error" }), { status: 500 }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
