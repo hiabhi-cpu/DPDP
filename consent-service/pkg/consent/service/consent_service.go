@@ -140,14 +140,14 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 	// The session check runs AFTER the idempotency replay (a replay returns the
 	// original row even once its session has expired) but BEFORE any write: a
 	// consent row must never exist without a real OTP verification behind it.
-	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile); err != nil {
+	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile, req.HMSPatientID); err != nil {
 		return nil, false, fmt.Errorf("ConsentService.Capture: %w", err)
 	}
 
 	// Re-grant of a withdrawn purpose is out of scope for now: capture is blocked
 	// only while some purpose is still active. After a full withdrawal (no active
 	// purposes) a fresh capture is allowed.
-	existing, err := s.repo.GetLatestByPatientKey(ctx, hospitalID, patientKey)
+	existing, err := s.repo.GetLatestByPatientAndHMS(ctx, hospitalID, patientKey, req.HMSPatientID)
 	if err != nil {
 		return nil, false, fmt.Errorf("ConsentService.Capture: failed to check existing: %w", err)
 	}
@@ -166,10 +166,16 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 	// recompute and compare it — that recomputability IS the tamper evidence.
 	consentID := uuid.New()
 	createdAt := time.Now().UTC().Truncate(time.Microsecond)
+	// hms_patient_id is hashed alongside patient_key because the PAIR is the
+	// data principal. patient_key alone names a household (families share a
+	// mobile), so a hash binding only it would attest that "the household
+	// consented" — and would still verify after the field naming the actual
+	// person was altered.
 	artifactHash := sharedcrypto.ComputeArtifactHash(
 		consentID.String(),
 		hospitalID,
 		patientKey,
+		req.HMSPatientID,
 		canonicalPurposeMap(purposes),
 		hashTimestamp(createdAt),
 	)
@@ -198,7 +204,16 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 		ConsentID:  &consentID,
 		RequestID:  uuid.New(),
 		IPAddress:  ip,
-		Details:    map[string]any{"purposes": req.Purposes, "session_id": req.SessionID},
+		// ponytail: hms_patient_id rides in details JSONB rather than its own
+		// audit_log column. idx_audit_patient_key narrows to the household (a
+		// handful of rows), then this field picks the individual — fine at pilot
+		// scale. If per-household audit volume grows, promote it to a column
+		// with its own index.
+		Details: map[string]any{
+			"purposes":       req.Purposes,
+			"session_id":     req.SessionID,
+			"hms_patient_id": req.HMSPatientID,
+		},
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("ConsentService.Capture: %w", err)
@@ -218,31 +233,16 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 }
 
 func (s *consentService) Check(ctx context.Context, hospitalID, ip string, req *model.CheckConsentRequest) (*model.CheckConsentResponse, error) {
-	// Resolve the patient's latest row by HMS ID (doctor/HMS path — no raw mobile
-	// needed) or by mobile (kiosk/portal path). The controller guarantees exactly
-	// one is set. patientKey is used only for the audit record.
-	var (
-		latest     *model.Consent
-		patientKey string
-		err        error
-	)
-	if req.HMSPatientID != "" {
-		latest, err = s.repo.GetLatestByHMSPatientID(ctx, hospitalID, req.HMSPatientID)
-		if err != nil {
-			return nil, fmt.Errorf("ConsentService.Check: %w", err)
-		}
-		if latest != nil {
-			patientKey = latest.PatientKey
-		}
-	} else {
-		patientKey, err = s.patientKeyFor(ctx, hospitalID, req.Mobile)
-		if err != nil {
-			return nil, fmt.Errorf("ConsentService.Check: %w", err)
-		}
-		latest, err = s.repo.GetLatestByPatientKey(ctx, hospitalID, patientKey)
-		if err != nil {
-			return nil, fmt.Errorf("ConsentService.Check: %w", err)
-		}
+	// Identity is the HMS patient ID. patientKey is read off the found row and
+	// used only for the audit record — it is never a lookup input here, because
+	// a mobile-derived key names a household rather than a patient.
+	latest, err := s.repo.GetLatestByHMSPatientID(ctx, hospitalID, req.HMSPatientID)
+	if err != nil {
+		return nil, fmt.Errorf("ConsentService.Check: %w", err)
+	}
+	var patientKey string
+	if latest != nil {
+		patientKey = latest.PatientKey
 	}
 
 	// Resolve the state of the requested purpose from the latest row's map.
@@ -263,9 +263,11 @@ func (s *consentService) Check(ctx context.Context, hospitalID, ip string, req *
 		eventType = "CONSENT_MISSING_ACCESS_ATTEMPT"
 	}
 
-	details := map[string]any{"purpose": req.Purpose, "allowed": resp.Allowed, "reason": resp.Reason}
-	if req.HMSPatientID != "" {
-		details["hms_patient_id"] = req.HMSPatientID
+	details := map[string]any{
+		"purpose":        req.Purpose,
+		"allowed":        resp.Allowed,
+		"reason":         resp.Reason,
+		"hms_patient_id": req.HMSPatientID,
 	}
 
 	outbox, err := buildOutbox(AuditEvent{
@@ -297,11 +299,11 @@ func (s *consentService) Withdraw(ctx context.Context, hospitalID, ip string, re
 	}
 
 	// A withdrawal mutates legal state — it needs the same OTP proof as capture.
-	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile); err != nil {
+	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile, req.HMSPatientID); err != nil {
 		return fmt.Errorf("ConsentService.Withdraw: %w", err)
 	}
 
-	existing, err := s.repo.GetLatestByPatientKey(ctx, hospitalID, patientKey)
+	existing, err := s.repo.GetLatestByPatientAndHMS(ctx, hospitalID, patientKey, req.HMSPatientID)
 	if err != nil {
 		return fmt.Errorf("ConsentService.Withdraw: %w", err)
 	}
@@ -340,10 +342,12 @@ func (s *consentService) Withdraw(ctx context.Context, hospitalID, ip string, re
 
 	newID := uuid.New()
 	createdAt := time.Now().UTC().Truncate(time.Microsecond)
+	// Same field order as Capture — the pair identifies the data principal.
 	artifactHash := sharedcrypto.ComputeArtifactHash(
 		newID.String(),
 		hospitalID,
 		patientKey,
+		req.HMSPatientID,
 		canonicalPurposeMap(newMap),
 		hashTimestamp(createdAt),
 	)
@@ -379,6 +383,7 @@ func (s *consentService) Withdraw(ctx context.Context, hospitalID, ip string, re
 			"previous_id":        existing.ID,
 			"withdrawn_purposes": withdrawn,
 			"remaining_status":   withdrawnConsent.Status,
+			"hms_patient_id":     req.HMSPatientID,
 		},
 	})
 	if err != nil {
@@ -403,11 +408,11 @@ func (s *consentService) Grant(ctx context.Context, hospitalID, ip string, req *
 	}
 
 	// A grant creates new processing permission — same OTP proof as capture.
-	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile); err != nil {
+	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile, req.HMSPatientID); err != nil {
 		return nil, false, fmt.Errorf("ConsentService.Grant: %w", err)
 	}
 
-	existing, err := s.repo.GetLatestByPatientKey(ctx, hospitalID, patientKey)
+	existing, err := s.repo.GetLatestByPatientAndHMS(ctx, hospitalID, patientKey, req.HMSPatientID)
 	if err != nil {
 		return nil, false, fmt.Errorf("ConsentService.Grant: %w", err)
 	}
@@ -436,10 +441,12 @@ func (s *consentService) Grant(ctx context.Context, hospitalID, ip string, req *
 
 	newID := uuid.New()
 	createdAt := time.Now().UTC().Truncate(time.Microsecond)
+	// Same field order as Capture — the pair identifies the data principal.
 	artifactHash := sharedcrypto.ComputeArtifactHash(
 		newID.String(),
 		hospitalID,
 		patientKey,
+		req.HMSPatientID,
 		canonicalPurposeMap(newMap),
 		hashTimestamp(createdAt),
 	)
@@ -473,6 +480,7 @@ func (s *consentService) Grant(ctx context.Context, hospitalID, ip string, req *
 			"previous_id":      existing.ID,
 			"granted_purposes": granted,
 			"renewal":          true,
+			"hms_patient_id":   req.HMSPatientID,
 		},
 	})
 	if err != nil {

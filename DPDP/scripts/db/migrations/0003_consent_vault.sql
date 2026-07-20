@@ -5,6 +5,8 @@
 --   - Never UPDATE or DELETE — enforced at both DB level (trigger) and app level
 --   - RLS isolates each hospital's rows — cross-hospital queries return 0 rows
 --   - patient_key = HMAC_SHA256(mobile + SYSTEM_SALT + hospital_key) — raw mobile NEVER stored
+--     NOTE (0015): patient_key identifies a CONTACT CHANNEL, not a patient.
+--     Families share a mobile. Identity is (patient_key, hms_patient_id).
 --   - Each change creates a NEW row with version++ and previous_id pointing to prior row
 -- =============================================================================
 

@@ -84,13 +84,38 @@ func insertConsentRowV(t *testing.T, admin *pgx.Conn, hospitalID, patientKey, ev
 	}
 	_, err := admin.Exec(context.Background(), `
 		INSERT INTO consent.consent_vault
-			(id, hospital_id, patient_key, type, status, purposes, otp_verified, artifact_hash, version)
-		VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8)`,
-		uuid.New(), hospitalID, patientKey, evType, status, []byte(purposesJSON),
+			(id, hospital_id, patient_key, hms_patient_id, type, status, purposes, otp_verified, artifact_hash, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)`,
+		uuid.New(), hospitalID, patientKey,
+		// Consent rows must name a patient (migration 0015). Derived from
+		// patient_key so every row in one patient's version chain carries the
+		// SAME id, as real data does — "latest row wins" depends on those rows
+		// being one patient.
+		hmsIDFor(patientKey),
+		evType, status, []byte(purposesJSON),
 		hex.EncodeToString(b), version,
 	)
 	if err != nil {
 		t.Fatalf("insert consent row (%s/%s v%d): %v", evType, status, version, err)
+	}
+}
+
+// insertConsentRowFor is insertConsentRow with an explicit hms_patient_id, for
+// tests that need two DIFFERENT PEOPLE under one patient_key — a family sharing
+// a mobile. The derived id used elsewhere cannot express that case, because it
+// is a pure function of patient_key.
+func insertConsentRowFor(t *testing.T, admin *pgx.Conn, hospitalID, patientKey, hmsPatientID, evType, status, purposesJSON string) {
+	t.Helper()
+	_, err := admin.Exec(context.Background(), `
+		INSERT INTO consent.consent_vault
+			(id, hospital_id, patient_key, hms_patient_id, type, status, purposes, otp_verified, artifact_hash, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, 1)`,
+		uuid.New(), hospitalID, patientKey, hmsPatientID,
+		evType, status, []byte(purposesJSON),
+		hex.EncodeToString(mustRand(t, 32)),
+	)
+	if err != nil {
+		t.Fatalf("insert consent row for %s (%s/%s): %v", hmsPatientID, evType, status, err)
 	}
 }
 
@@ -152,5 +177,41 @@ func TestGetStatsLatestRowWins(t *testing.T) {
 	if stats.Consents.Active != 0 || stats.Consents.Withdrawn != 1 || stats.Consents.TotalPatients != 1 {
 		t.Fatalf("active=%d withdrawn=%d total=%d, want 0/1/1",
 			stats.Consents.Active, stats.Consents.Withdrawn, stats.Consents.TotalPatients)
+	}
+}
+
+// A family shares one mobile and therefore one patient_key. Stats must count
+// them as the number of PEOPLE, not the number of phone numbers: keying the
+// per-patient rollup on patient_key alone collapses a household into one
+// counted patient and picks one member's status arbitrarily.
+//
+// This is the reporting-path echo of the bug this branch fixes elsewhere, and
+// no per-task review owned it — stats belongs to none of capture/check/
+// withdraw/grant.
+func TestGetStatsCountsFamilyMembersSeparately(t *testing.T) {
+	ctx := context.Background()
+	adminURL, _ := connections(t)
+	admin := connect(t, adminURL)
+	pool := newStatsPool(t)
+
+	hosp := createStatsHospital(t, admin)
+
+	// ONE household key, two people: the mother active, the son withdrawn.
+	householdKey := randomPatientKey(t)
+	insertConsentRowFor(t, admin, hosp, householdKey, "PA-mother", "CONSENT_GIVEN", "ACTIVE", `{"treatment":"ACTIVE"}`)
+	insertConsentRowFor(t, admin, hosp, householdKey, "PA-son", "WITHDRAWAL", "WITHDRAWN", `{"treatment":"WITHDRAWN"}`)
+
+	stats, err := repository.New(pool).GetStats(ctx, hosp, 30)
+	if err != nil {
+		t.Fatalf("GetStats: %v", err)
+	}
+
+	if stats.Consents.TotalPatients != 2 {
+		t.Fatalf("total_patients = %d, want 2 — a shared mobile is one patient_key but two data principals",
+			stats.Consents.TotalPatients)
+	}
+	if stats.Consents.Active != 1 || stats.Consents.Withdrawn != 1 {
+		t.Fatalf("active=%d withdrawn=%d, want 1/1 — one member's status is standing in for the household's",
+			stats.Consents.Active, stats.Consents.Withdrawn)
 	}
 }

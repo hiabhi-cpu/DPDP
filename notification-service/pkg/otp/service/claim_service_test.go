@@ -43,7 +43,7 @@ func TestSendClaimThenResolve(t *testing.T) {
 		t.Fatalf("resolve result = %+v", res)
 	}
 	// The resolved session validates for that mobile (capture would accept it).
-	if err := svc.ValidateSession(ctx, res.SessionID, "9876543210"); err != nil {
+	if err := svc.ValidateSession(ctx, res.SessionID, "9876543210", res.Ref); err != nil {
 		t.Fatalf("ValidateSession after resolve: %v", err)
 	}
 }

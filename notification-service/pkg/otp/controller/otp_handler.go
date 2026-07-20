@@ -68,11 +68,11 @@ func (h *OTPHandler) Verify(c *gin.Context) {
 func (h *OTPHandler) ValidateSession(c *gin.Context) {
 	var req model.ValidateSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "session_id and mobile are required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "session_id, mobile and hms_patient_id are required"})
 		return
 	}
 
-	if err := h.svc.ValidateSession(c.Request.Context(), req.SessionID, req.Mobile); err != nil {
+	if err := h.svc.ValidateSession(c.Request.Context(), req.SessionID, req.Mobile, req.HMSPatientID); err != nil {
 		if errors.Is(err, service.ErrSessionNotVerified) {
 			c.JSON(http.StatusNotFound, gin.H{"verified": false})
 			return

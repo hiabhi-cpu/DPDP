@@ -16,9 +16,10 @@ type OTPService interface {
 	Send(ctx context.Context, mobile string) (*model.SendOTPResponse, error)
 	Verify(ctx context.Context, req *model.VerifyOTPRequest) (sessionID string, err error)
 	// ValidateSession reports whether sessionID is a live, OTP-verified session
-	// for the given mobile. Called by consent-service (via /internal) before a
-	// consent row is written — this is what makes otp_verified=true true.
-	ValidateSession(ctx context.Context, sessionID, mobile string) error
+	// for BOTH the mobile and the HMS patient ID it was issued for. Called by
+	// consent-service (via /internal) before a consent row is written — this is
+	// what makes otp_verified=true true.
+	ValidateSession(ctx context.Context, sessionID, mobile, hmsPatientID string) error
 	SendClaim(ctx context.Context, hospitalID, mobile, ref string) (*model.SendOTPResponse, error)
 	ResolveClaim(ctx context.Context, hospitalID, otp string) (*model.ClaimResolveResult, error)
 }
@@ -83,7 +84,7 @@ func (s *otpService) Send(ctx context.Context, mobile string) (*model.SendOTPRes
 
 	// In background or sync depending on requirement
 	if err := s.smsClient.SendOTP(ctx, mobile, otp); err != nil {
-		// Log error but don't fail the request if saving succeeded, 
+		// Log error but don't fail the request if saving succeeded,
 		// though in a real app you might want to handle this differently.
 		return nil, fmt.Errorf("service.Send: failed to send SMS: %w", err)
 	}
@@ -123,6 +124,9 @@ func (s *otpService) Verify(ctx context.Context, req *model.VerifyOTPRequest) (s
 	_ = s.repo.DeleteOTP(ctx, req.ReferenceID)
 
 	sessionID := uuid.New().String()
+	// No Ref: the walk-in OTP path does not name a patient, so sessions it mints
+	// cannot authorize a consent capture. A patient portal must supply the HMS
+	// patient ID to mint a usable session.
 	state := model.SessionState{
 		Mobile:    req.Mobile,
 		Verified:  true,
@@ -136,15 +140,26 @@ func (s *otpService) Verify(ctx context.Context, req *model.VerifyOTPRequest) (s
 	return sessionID, nil
 }
 
-// ValidateSession confirms a live verified session exists for (sessionID,
-// mobile). The mobile must match the one the OTP was sent to, so a session
-// obtained for one patient cannot vouch for another.
-func (s *otpService) ValidateSession(ctx context.Context, sessionID, mobile string) error {
+// ValidateSession confirms a live verified session exists for
+// (sessionID, mobile, hmsPatientID). The mobile must match the number the OTP
+// was sent to, and the ref must match the patient it was issued for.
+//
+// Both halves are load-bearing. Mobile alone does NOT identify a patient — a
+// family shares one number, so an OTP issued for the son would otherwise vouch
+// for a consent naming the mother. A session with no ref cannot name a patient
+// and is always rejected.
+func (s *otpService) ValidateSession(ctx context.Context, sessionID, mobile, hmsPatientID string) error {
 	state, err := s.repo.GetSession(ctx, sessionID)
 	if err != nil {
 		return fmt.Errorf("service.ValidateSession: %w", err)
 	}
 	if state == nil || !state.Verified || state.Mobile != mobile {
+		return ErrSessionNotVerified
+	}
+	// A family shares one mobile, so the mobile alone does not identify who is
+	// consenting. A session with no ref cannot name a patient at all and is
+	// always rejected.
+	if state.Ref == "" || state.Ref != hmsPatientID {
 		return ErrSessionNotVerified
 	}
 	return nil
@@ -242,7 +257,7 @@ func (s *otpService) ResolveClaim(ctx context.Context, hospitalID, otp string) (
 		_ = s.repo.DeleteOTP(ctx, refID)
 		_ = s.repo.RemoveClaim(ctx, hospitalID, refID)
 		sessionID := uuid.New().String()
-		state := model.SessionState{Mobile: mobile, Verified: true, ExpiresAt: time.Now().Add(sessionExpiry)}
+		state := model.SessionState{Mobile: mobile, Ref: ref, Verified: true, ExpiresAt: time.Now().Add(sessionExpiry)}
 		if err := s.repo.SaveSession(ctx, sessionID, state, sessionExpiry); err != nil {
 			return nil, fmt.Errorf("service.ResolveClaim: save session: %w", err)
 		}
