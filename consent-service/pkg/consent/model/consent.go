@@ -91,12 +91,11 @@ type CaptureConsentRequest struct {
 
 // CheckConsentRequest is the body for POST /api/v1/consent/check. Purpose is
 // required — checks are purpose-scoped (plan §11). The patient is identified by
-// EITHER hms_patient_id (the doctor/HMS access path — opaque, non-PII) OR mobile
-// (kiosk/portal path). Exactly one must be provided; validated in the handler.
-// Mobile is only ever in the body, never a URL, so raw mobiles never hit logs.
+// hms_patient_id, which is opaque and non-PII. Mobile is deliberately absent: it
+// identifies a household, not a person — families share one number — so it can
+// only ever select the wrong family member.
 type CheckConsentRequest struct {
-	Mobile       string `json:"mobile"`
-	HMSPatientID string `json:"hms_patient_id"`
+	HMSPatientID string `json:"hms_patient_id" binding:"required"`
 	Purpose      string `json:"purpose" binding:"required"`
 }
 

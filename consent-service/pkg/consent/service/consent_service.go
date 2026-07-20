@@ -218,31 +218,16 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 }
 
 func (s *consentService) Check(ctx context.Context, hospitalID, ip string, req *model.CheckConsentRequest) (*model.CheckConsentResponse, error) {
-	// Resolve the patient's latest row by HMS ID (doctor/HMS path — no raw mobile
-	// needed) or by mobile (kiosk/portal path). The controller guarantees exactly
-	// one is set. patientKey is used only for the audit record.
-	var (
-		latest     *model.Consent
-		patientKey string
-		err        error
-	)
-	if req.HMSPatientID != "" {
-		latest, err = s.repo.GetLatestByHMSPatientID(ctx, hospitalID, req.HMSPatientID)
-		if err != nil {
-			return nil, fmt.Errorf("ConsentService.Check: %w", err)
-		}
-		if latest != nil {
-			patientKey = latest.PatientKey
-		}
-	} else {
-		patientKey, err = s.patientKeyFor(ctx, hospitalID, req.Mobile)
-		if err != nil {
-			return nil, fmt.Errorf("ConsentService.Check: %w", err)
-		}
-		latest, err = s.repo.GetLatestByPatientAndHMS(ctx, hospitalID, patientKey, req.HMSPatientID)
-		if err != nil {
-			return nil, fmt.Errorf("ConsentService.Check: %w", err)
-		}
+	// Identity is the HMS patient ID. patientKey is read off the found row and
+	// used only for the audit record — it is never a lookup input here, because
+	// a mobile-derived key names a household rather than a patient.
+	latest, err := s.repo.GetLatestByHMSPatientID(ctx, hospitalID, req.HMSPatientID)
+	if err != nil {
+		return nil, fmt.Errorf("ConsentService.Check: %w", err)
+	}
+	var patientKey string
+	if latest != nil {
+		patientKey = latest.PatientKey
 	}
 
 	// Resolve the state of the requested purpose from the latest row's map.
@@ -263,9 +248,11 @@ func (s *consentService) Check(ctx context.Context, hospitalID, ip string, req *
 		eventType = "CONSENT_MISSING_ACCESS_ATTEMPT"
 	}
 
-	details := map[string]any{"purpose": req.Purpose, "allowed": resp.Allowed, "reason": resp.Reason}
-	if req.HMSPatientID != "" {
-		details["hms_patient_id"] = req.HMSPatientID
+	details := map[string]any{
+		"purpose":        req.Purpose,
+		"allowed":        resp.Allowed,
+		"reason":         resp.Reason,
+		"hms_patient_id": req.HMSPatientID,
 	}
 
 	outbox, err := buildOutbox(AuditEvent{

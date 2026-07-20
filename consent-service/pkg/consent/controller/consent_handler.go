@@ -55,8 +55,8 @@ func (h *ConsentHandler) Capture(c *gin.Context) {
 	c.JSON(http.StatusOK, consent)
 }
 
-// Check handles POST /api/consent/v1/check. Mobile is read from the JSON body,
-// not the URL, to keep raw mobile numbers out of access logs.
+// Check handles POST /api/consent/v1/check. The patient is named by
+// hms_patient_id — opaque and non-PII, so no raw mobile reaches access logs.
 func (h *ConsentHandler) Check(c *gin.Context) {
 	hospitalID := c.GetString(middleware.CtxHospitalID)
 	if hospitalID == "" {
@@ -66,19 +66,7 @@ func (h *ConsentHandler) Check(c *gin.Context) {
 
 	var req model.CheckConsentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "purpose is required"})
-		return
-	}
-	// Identify the patient by exactly one of hms_patient_id (doctor/HMS path) or
-	// mobile (kiosk/portal path).
-	hasMobile := req.Mobile != ""
-	hasHMS := req.HMSPatientID != ""
-	if hasMobile == hasHMS {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "provide exactly one of mobile or hms_patient_id"})
-		return
-	}
-	if hasMobile && len(req.Mobile) != 10 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mobile must be 10 digits"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "hms_patient_id and purpose are required"})
 		return
 	}
 

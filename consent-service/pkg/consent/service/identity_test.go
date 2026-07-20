@@ -21,6 +21,7 @@ const (
 type fakeIdentityRepo struct {
 	repository.ConsentRepository // embedded: methods we don't exercise panic loudly
 	existing                     map[string]*model.Consent
+	hmsRows                      map[string]*model.Consent
 	inserted                     []*model.Consent
 	withdrawn                    []*model.Consent
 }
@@ -28,6 +29,12 @@ type fakeIdentityRepo struct {
 func (f *fakeIdentityRepo) GetLatestByPatientAndHMS(_ context.Context, _, patientKey, hmsPatientID string) (*model.Consent, error) {
 	return f.existing[patientKey+"|"+hmsPatientID], nil
 }
+
+func (f *fakeIdentityRepo) GetLatestByHMSPatientID(_ context.Context, _, hmsPatientID string) (*model.Consent, error) {
+	return f.hmsRows[hmsPatientID], nil
+}
+
+func (f *fakeIdentityRepo) EnqueueAudit(context.Context, *model.OutboxRecord) error { return nil }
 
 func (f *fakeIdentityRepo) GetByIdempotencyKey(context.Context, string, string) (*model.Consent, error) {
 	return nil, nil
@@ -127,5 +134,28 @@ func TestWithdrawDoesNotTouchARelativesConsent(t *testing.T) {
 	}
 	if len(repo.withdrawn) != 0 {
 		t.Fatalf("wrote %d withdrawal rows, want 0 — the mother's consent must be untouched", len(repo.withdrawn))
+	}
+}
+
+// Check must answer for the patient named by hms_patient_id, not for whichever
+// family member on that mobile consented most recently.
+func TestCheckAnswersForTheNamedPatient(t *testing.T) {
+	repo := &fakeIdentityRepo{hmsRows: map[string]*model.Consent{
+		"PA-son": {
+			PatientKey: familyKey(),
+			Purposes:   map[string]model.PurposeState{"treatment": model.PurposeWithdrawn},
+		},
+	}}
+	svc := NewConsentService(repo, fakeSecrets{}, okSessions{})
+
+	resp, err := svc.Check(context.Background(), "hosp-1", "1.2.3.4", &model.CheckConsentRequest{
+		HMSPatientID: "PA-son",
+		Purpose:      "treatment",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Allowed {
+		t.Fatal("son withdrew treatment; check must not report allowed")
 	}
 }
