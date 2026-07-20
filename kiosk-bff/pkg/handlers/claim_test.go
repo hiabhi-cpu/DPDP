@@ -128,3 +128,75 @@ func TestCaptureFiresDoneOn201(t *testing.T) {
 		t.Fatal("expected integration DONE status call after 201 capture")
 	}
 }
+
+// A capture that the kiosk retried after losing the first response comes back
+// 200, not 201: consent-service replays the idempotency key and returns the
+// original row. The consent IS saved, so the reception queue must still be
+// cleared — otherwise staff keep chasing a patient who already consented.
+func TestCaptureFiresDoneOn200Replay(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	done := make(chan struct{}, 1)
+	consent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"c-1","hms_patient_id":"PA-1"}`))
+	}))
+	defer consent.Close()
+	integration := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/internal/v1/registrations/PA-1/status" {
+			done <- struct{}{}
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer integration.Close()
+
+	h := NewClaimHandler("http://unused", integration.URL, consent.URL, StubProvider("jwt"))
+	r := gin.New()
+	r.POST("/kiosk/api/consent/capture", h.Capture)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/kiosk/api/consent/capture",
+		strings.NewReader(`{"mobile":"9876543210","session_id":"sess-1","hms_patient_id":"PA-1","purposes":["treatment"]}`)))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, want 200", w.Code)
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected integration DONE status call after a 200 replay capture")
+	}
+}
+
+// A capture that genuinely failed must NOT clear the queue — the patient still
+// needs the front desk.
+func TestCaptureDoesNotFireDoneOnFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	called := make(chan struct{}, 1)
+	consent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"otp session invalid or expired"}`))
+	}))
+	defer consent.Close()
+	integration := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/status") {
+			called <- struct{}{}
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer integration.Close()
+
+	h := NewClaimHandler("http://unused", integration.URL, consent.URL, StubProvider("jwt"))
+	r := gin.New()
+	r.POST("/kiosk/api/consent/capture", h.Capture)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/kiosk/api/consent/capture",
+		strings.NewReader(`{"mobile":"9876543210","session_id":"sess-1","hms_patient_id":"PA-1","purposes":["treatment"]}`)))
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("code = %d, want 403", w.Code)
+	}
+	select {
+	case <-called:
+		t.Fatal("DONE status must not be marked when the capture failed")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
