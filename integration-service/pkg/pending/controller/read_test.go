@@ -49,17 +49,17 @@ func (m *mapStore) SetStatus(_ context.Context, hospitalID, hms, status string) 
 
 // fakeChecker is a ConsentChecker for read tests.
 type fakeChecker struct {
-	active     map[string]bool
-	err        error
-	gotAuth    string
-	gotMobiles []string
-	calls      int
+	active  map[string]bool
+	err     error
+	gotAuth string
+	gotIDs  []string
+	calls   int
 }
 
-func (f *fakeChecker) ActiveMobiles(_ context.Context, authHeader string, mobiles []string) (map[string]bool, error) {
+func (f *fakeChecker) ActiveHMSPatientIDs(_ context.Context, authHeader string, ids []string) (map[string]bool, error) {
 	f.calls++
 	f.gotAuth = authHeader
-	f.gotMobiles = mobiles
+	f.gotIDs = ids
 	return f.active, f.err
 }
 
@@ -149,14 +149,21 @@ func TestSetStatus_UpdatesAndRejectsBadValue(t *testing.T) {
 }
 
 // TestList_FlagsConsentedRows verifies the queue is told which patients already
-// consented, and that the lookup is keyed by MOBILE — not hms_patient_id, which
-// is not what capture blocks on.
+// consented, and that the lookup is keyed by hms_patient_id — which is what
+// capture blocks on.
+//
+// The two records deliberately SHARE one mobile, as a family does. Keyed by
+// mobile, both would come back consented off Asha's row alone: Ravi would be
+// badged "already consented" with his Send code disabled, so reception would
+// never send him a code and he would be silently denied capture, with no error
+// anywhere. That is the bug this re-keying removes.
 func TestList_FlagsConsentedRows(t *testing.T) {
+	const familyMobile = "9876543210"
 	store := &mapStore{recs: []model.PendingRegistration{
-		{HospitalID: "hosp-1", HMSPatientID: "PA-1", Name: "Asha", Mobile: "9876543210"},
-		{HospitalID: "hosp-1", HMSPatientID: "PA-2", Name: "Ravi", Mobile: "9000000000"},
+		{HospitalID: "hosp-1", HMSPatientID: "PA-1", Name: "Asha", Mobile: familyMobile},
+		{HospitalID: "hosp-1", HMSPatientID: "PA-2", Name: "Ravi", Mobile: familyMobile},
 	}}
-	checker := &fakeChecker{active: map[string]bool{"9876543210": true}}
+	checker := &fakeChecker{active: map[string]bool{"PA-1": true}}
 	r := readRouter(store, checker, "hosp-1")
 
 	req := httptest.NewRequest(http.MethodGet, "/internal/v1/registrations", nil)
@@ -177,16 +184,17 @@ func TestList_FlagsConsentedRows(t *testing.T) {
 	for _, it := range items {
 		want := it.HMSPatientID == "PA-1"
 		if it.Consented != want {
-			t.Fatalf("%s consented = %v, want %v", it.HMSPatientID, it.Consented, want)
+			t.Fatalf("%s consented = %v, want %v — sharing a mobile must not share a consent",
+				it.HMSPatientID, it.Consented, want)
 		}
 	}
-	// Raw mobiles are the lookup key; masked ones would never match.
-	if len(checker.gotMobiles) != 2 {
-		t.Fatalf("checker got %v, want both raw mobiles", checker.gotMobiles)
+	// HMS patient IDs are the lookup key, and no mobile is sent at all.
+	if len(checker.gotIDs) != 2 {
+		t.Fatalf("checker got %v, want both HMS patient IDs", checker.gotIDs)
 	}
-	for _, m := range checker.gotMobiles {
-		if strings.Contains(m, "*") {
-			t.Fatalf("masked mobile %q sent to consent lookup — cannot match", m)
+	for _, id := range checker.gotIDs {
+		if strings.Contains(id, familyMobile) {
+			t.Fatalf("mobile %q sent to the consent lookup — raw mobiles must not leave here", id)
 		}
 	}
 	// The caller's hospital JWT is forwarded as-is.

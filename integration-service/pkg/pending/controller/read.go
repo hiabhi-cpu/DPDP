@@ -47,20 +47,22 @@ func (h *ReadHandler) List(c *gin.Context) {
 
 	// Ask consent-service which of these patients already consented, so reception
 	// can see "no action" instead of burning an SMS and a walk on a capture that
-	// will 409. Keyed by the RAW mobile: capture blocks on the mobile-derived
-	// patient_key, so this is the only key that cannot disagree with it. Mobiles
-	// leave here server-side only — the response below is still masked.
+	// will 409. Keyed by hms_patient_id, which is what capture blocks on. Keying
+	// on mobile would answer for the HOUSEHOLD — families share one number, so a
+	// son whose mother consented would be badged "already consented" with his
+	// Send code disabled, silently denying him capture. Sending IDs also keeps
+	// raw mobiles off the wire entirely.
 	//
 	// Fails open. On any error the flags stay false and the queue renders exactly
 	// as it did before this lookup existed: a consent-service blip costs a wasted
 	// SMS, never an empty reception board.
 	consented := map[string]bool{}
 	if len(recs) > 0 {
-		mobiles := make([]string, 0, len(recs))
+		ids := make([]string, 0, len(recs))
 		for _, r := range recs {
-			mobiles = append(mobiles, r.Mobile)
+			ids = append(ids, r.HMSPatientID)
 		}
-		got, cerr := h.consent.ActiveMobiles(c.Request.Context(), c.GetHeader("Authorization"), mobiles)
+		got, cerr := h.consent.ActiveHMSPatientIDs(c.Request.Context(), c.GetHeader("Authorization"), ids)
 		if cerr != nil {
 			log.Warnf("integration-service: consent lookup failed, queue renders unbadged: %v", cerr)
 		} else {
@@ -76,7 +78,7 @@ func (h *ReadHandler) List(c *gin.Context) {
 			Mobile:       maskMobile(r.Mobile),
 			RegisteredAt: r.RegisteredAt,
 			Status:       r.Status,
-			Consented:    consented[r.Mobile],
+			Consented:    consented[r.HMSPatientID],
 		})
 	}
 	c.JSON(http.StatusOK, items)

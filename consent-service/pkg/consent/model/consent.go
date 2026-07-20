@@ -110,18 +110,21 @@ type CheckConsentResponse struct {
 
 // ActiveConsentRequest is the body for POST /api/v1/consent/active — the batch,
 // purpose-agnostic "which of these patients already have consent?" lookup behind
-// the reception queue's already-consented badge. Patients are identified by
-// mobile because that is what Capture's block keys on (via patient_key); an
-// hms_patient_id lookup could disagree with it.
+// the reception queue's already-consented badge.
 //
-// The 200-entry cap is input validation at a trust boundary, not tuning. Mobiles
-// are in the body, never a URL, so raw mobiles never reach logs.
+// Patients are identified by hms_patient_id, which is what Capture's block keys
+// on. A mobile identifies a household, not a person: keyed by mobile, a son
+// whose mother consented comes back active, so reception badges him "already
+// consented" and disables his Send code — silently denying him capture.
+//
+// The 200-entry cap is input validation at a trust boundary, not tuning. Sending
+// HMS IDs rather than mobiles also keeps raw mobiles out of this hop entirely.
 type ActiveConsentRequest struct {
-	Mobiles []string `json:"mobiles" binding:"required,min=1,max=200,dive,len=10"`
+	HMSPatientIDs []string `json:"hms_patient_ids" binding:"required,min=1,max=200,dive,required"`
 }
 
-// ActiveConsentResponse returns the subset of the requested mobiles that have at
-// least one active purpose, in the order they were requested.
+// ActiveConsentResponse returns the subset of the requested HMS patient IDs that
+// have at least one active purpose, in the order they were requested.
 type ActiveConsentResponse struct {
 	Active []string `json:"active"`
 }

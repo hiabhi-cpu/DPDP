@@ -181,8 +181,12 @@ func (r *pgxConsentRepository) GetByIdempotencyKey(ctx context.Context, hospital
 	return c, nil
 }
 
-// ActivePatientKeys returns the subset of patientKeys that currently have at
-// least one active purpose.
+// ActiveHMSPatientIDs returns the subset of hmsPatientIDs that currently have
+// at least one active purpose.
+//
+// Keyed by HMS patient ID rather than patient_key because patient_key is derived
+// from the mobile and a family shares one number — a patient_key batch would
+// report a whole household active off one member's consent.
 //
 // It mirrors getOneConsent's RLS shape — its own transaction with
 // setHospitalContext — rather than reusing it, because getOneConsent is
@@ -195,39 +199,39 @@ func (r *pgxConsentRepository) GetByIdempotencyKey(ctx context.Context, hospital
 // — emergency-service writes rows to this table whose status is not derived from
 // the purposes map, so the two can drift. Keeping the predicate identical is what
 // guarantees the queue can never disagree with what capture will do.
-func (r *pgxConsentRepository) ActivePatientKeys(ctx context.Context, hospitalID string, patientKeys []string) (map[string]bool, error) {
-	active := make(map[string]bool, len(patientKeys))
-	if len(patientKeys) == 0 {
+func (r *pgxConsentRepository) ActiveHMSPatientIDs(ctx context.Context, hospitalID string, hmsPatientIDs []string) (map[string]bool, error) {
+	active := make(map[string]bool, len(hmsPatientIDs))
+	if len(hmsPatientIDs) == 0 {
 		return active, nil
 	}
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("repository.ActivePatientKeys: begin transaction: %w", err)
+		return nil, fmt.Errorf("repository.ActiveHMSPatientIDs: begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
 	if err := setHospitalContext(ctx, tx, hospitalID); err != nil {
-		return nil, fmt.Errorf("repository.ActivePatientKeys: %w", err)
+		return nil, fmt.Errorf("repository.ActiveHMSPatientIDs: %w", err)
 	}
 
-	rows, err := tx.Query(ctx, queryLatestByPatientKeys, hospitalID, patientKeys)
+	rows, err := tx.Query(ctx, queryLatestByHMSPatientIDs, hospitalID, hmsPatientIDs)
 	if err != nil {
-		return nil, fmt.Errorf("repository.ActivePatientKeys: query failed: %w", err)
+		return nil, fmt.Errorf("repository.ActiveHMSPatientIDs: query failed: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		c, err := scanConsentRow(rows)
 		if err != nil {
-			return nil, fmt.Errorf("repository.ActivePatientKeys: scan failed: %w", err)
+			return nil, fmt.Errorf("repository.ActiveHMSPatientIDs: scan failed: %w", err)
 		}
 		if c.AnyActive() {
-			active[c.PatientKey] = true
+			active[c.HMSPatientID] = true
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("repository.ActivePatientKeys: %w", err)
+		return nil, fmt.Errorf("repository.ActiveHMSPatientIDs: %w", err)
 	}
 	return active, nil
 }

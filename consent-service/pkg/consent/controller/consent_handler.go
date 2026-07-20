@@ -91,11 +91,11 @@ func (h *ConsentHandler) Active(c *gin.Context) {
 
 	var req model.ActiveConsentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mobiles must be 1-200 entries of 10 digits"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "hms_patient_ids must be 1-200 non-empty entries"})
 		return
 	}
 
-	active, err := h.svc.ActiveMobiles(c.Request.Context(), hospitalID, req.Mobiles)
+	active, err := h.svc.ActiveHMSPatientIDs(c.Request.Context(), hospitalID, req.HMSPatientIDs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to look up consent"})
 		return

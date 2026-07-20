@@ -40,11 +40,15 @@ const (
 	// vault's current state for each. The caller applies AnyActive() to the
 	// Purposes map rather than filtering on status here, so this stays the exact
 	// question Capture asks.
-	queryLatestByPatientKeys = `
-		SELECT DISTINCT ON (patient_key) ` + consentColumns + `
+	// Keyed by hms_patient_id, not patient_key: patient_key is derived from the
+	// mobile, and a family shares one number, so a patient_key batch answers for
+	// the household. DISTINCT ON needs no pair here — hms_patient_id already
+	// names the individual.
+	queryLatestByHMSPatientIDs = `
+		SELECT DISTINCT ON (hms_patient_id) ` + consentColumns + `
 		FROM consent.consent_vault
-		WHERE hospital_id = $1 AND patient_key = ANY($2)
-		ORDER BY patient_key, version DESC
+		WHERE hospital_id = $1 AND hms_patient_id = ANY($2)
+		ORDER BY hms_patient_id, version DESC
 	`
 
 	queryGetByIdempotencyKey = `

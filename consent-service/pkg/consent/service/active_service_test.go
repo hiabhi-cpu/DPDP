@@ -11,101 +11,64 @@ import (
 type fakeActiveRepo struct {
 	repository.ConsentRepository // embed for the methods we don't exercise
 	gotHospitalID                string
-	gotKeys                      []string
+	gotIDs                       []string
 	active                       map[string]bool
 }
 
-func (f *fakeActiveRepo) ActivePatientKeys(_ context.Context, hospitalID string, keys []string) (map[string]bool, error) {
+func (f *fakeActiveRepo) ActiveHMSPatientIDs(_ context.Context, hospitalID string, ids []string) (map[string]bool, error) {
 	f.gotHospitalID = hospitalID
-	f.gotKeys = keys
+	f.gotIDs = ids
 	return f.active, nil
 }
 
-// fakeSecrets returns fixed key material so patientKeyFor is deterministic.
-type fakeSecrets struct{}
+// The lookup passes HMS patient IDs straight through: no mobile is hashed, and
+// none is even accepted. This used to map mobiles to patient keys and back,
+// which is exactly what made it answer for a household rather than a person.
+func TestActiveHMSPatientIDsPassesIDsThrough(t *testing.T) {
+	repo := &fakeActiveRepo{active: map[string]bool{"PA-mother": true}}
+	svc := NewConsentService(repo, fakeSecrets{}, nil)
 
-func (fakeSecrets) GetSystemSalt(_ context.Context) (string, error) { return "test-salt", nil }
-func (fakeSecrets) GetHospitalKey(_ context.Context, _ string) (string, error) {
-	return "test-key", nil
-}
-
-// TestActiveMobilesMapsKeysBackToMobiles is the core of this method: it hashes
-// mobiles to patient keys on the way in and must map the repo's key-keyed answer
-// back to the caller's mobiles on the way out.
-func TestActiveMobilesMapsKeysBackToMobiles(t *testing.T) {
-	ctx := context.Background()
-	sp := fakeSecrets{}
-	svc := NewConsentService(&fakeActiveRepo{}, sp, nil).(*consentService)
-
-	// Derive the key the service will compute for the "consented" mobile, so the
-	// fake repo can answer in the same key space the real one would.
-	consentedKey, err := svc.patientKeyFor(ctx, "hosp-1", "9876543210")
+	got, err := svc.ActiveHMSPatientIDs(context.Background(), "hosp-1", []string{"PA-mother", "PA-son"})
 	if err != nil {
-		t.Fatalf("patientKeyFor: %v", err)
+		t.Fatalf("ActiveHMSPatientIDs: %v", err)
 	}
-
-	repo := &fakeActiveRepo{active: map[string]bool{consentedKey: true}}
-	svc = NewConsentService(repo, sp, nil).(*consentService)
-
-	got, err := svc.ActiveMobiles(ctx, "hosp-1", []string{"9876543210", "9000000000"})
-	if err != nil {
-		t.Fatalf("ActiveMobiles: %v", err)
-	}
-	if len(got) != 1 || got[0] != "9876543210" {
-		t.Fatalf("active = %v, want [9876543210]", got)
+	if len(got) != 1 || got[0] != "PA-mother" {
+		t.Fatalf("active = %v, want [PA-mother] — the son has not consented", got)
 	}
 	if repo.gotHospitalID != "hosp-1" {
 		t.Fatalf("repo got hospital %q, want hosp-1", repo.gotHospitalID)
 	}
-	if len(repo.gotKeys) != 2 {
-		t.Fatalf("repo got %d keys, want 2", len(repo.gotKeys))
-	}
-	// The raw mobile must never be handed to the repository.
-	for _, k := range repo.gotKeys {
-		if k == "9876543210" || k == "9000000000" {
-			t.Fatalf("raw mobile %q leaked into the repository call", k)
-		}
+	if len(repo.gotIDs) != 2 || repo.gotIDs[0] != "PA-mother" || repo.gotIDs[1] != "PA-son" {
+		t.Fatalf("repo got %v, want both IDs unchanged", repo.gotIDs)
 	}
 }
 
-// TestActiveMobilesPreservesInputOrder pins deterministic output — the repo
-// answers with a map, whose iteration order is random.
-func TestActiveMobilesPreservesInputOrder(t *testing.T) {
-	ctx := context.Background()
-	sp := fakeSecrets{}
-	svc := NewConsentService(&fakeActiveRepo{}, sp, nil).(*consentService)
-
-	mobiles := []string{"9111111111", "9222222222", "9333333333"}
-	activeKeys := map[string]bool{}
-	for _, m := range []string{"9333333333", "9111111111"} {
-		k, err := svc.patientKeyFor(ctx, "hosp-1", m)
-		if err != nil {
-			t.Fatalf("patientKeyFor: %v", err)
-		}
-		activeKeys[k] = true
-	}
-
-	svc = NewConsentService(&fakeActiveRepo{active: activeKeys}, sp, nil).(*consentService)
+// Output order is pinned: the repo answers with a map, whose iteration order is
+// random, so the response must follow the caller's input order.
+func TestActiveHMSPatientIDsPreservesInputOrder(t *testing.T) {
+	ids := []string{"PA-001", "PA-002", "PA-003"}
+	repo := &fakeActiveRepo{active: map[string]bool{"PA-003": true, "PA-001": true}}
+	svc := NewConsentService(repo, fakeSecrets{}, nil)
 
 	for i := 0; i < 20; i++ { // repeat: map order varies per iteration
-		got, err := svc.ActiveMobiles(ctx, "hosp-1", mobiles)
+		got, err := svc.ActiveHMSPatientIDs(context.Background(), "hosp-1", ids)
 		if err != nil {
-			t.Fatalf("ActiveMobiles: %v", err)
+			t.Fatalf("ActiveHMSPatientIDs: %v", err)
 		}
-		if len(got) != 2 || got[0] != "9111111111" || got[1] != "9333333333" {
-			t.Fatalf("active = %v, want [9111111111 9333333333] in input order", got)
+		if len(got) != 2 || got[0] != "PA-001" || got[1] != "PA-003" {
+			t.Fatalf("active = %v, want [PA-001 PA-003] in input order", got)
 		}
 	}
 }
 
-// TestActiveMobilesEmptyResult verifies a patient with no consent yields an empty
-// (non-nil) slice, so the JSON is [] rather than null.
-func TestActiveMobilesEmptyResult(t *testing.T) {
+// A patient with no consent yields an empty (non-nil) slice, so the JSON is []
+// rather than null.
+func TestActiveHMSPatientIDsEmptyResult(t *testing.T) {
 	svc := NewConsentService(&fakeActiveRepo{active: map[string]bool{}}, fakeSecrets{}, nil)
 
-	got, err := svc.ActiveMobiles(context.Background(), "hosp-1", []string{"9876543210"})
+	got, err := svc.ActiveHMSPatientIDs(context.Background(), "hosp-1", []string{"PA-001"})
 	if err != nil {
-		t.Fatalf("ActiveMobiles: %v", err)
+		t.Fatalf("ActiveHMSPatientIDs: %v", err)
 	}
 	if got == nil {
 		t.Fatalf("active = nil, want empty slice (marshals to [] not null)")

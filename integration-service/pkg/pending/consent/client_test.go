@@ -11,10 +11,10 @@ import (
 	"testing"
 )
 
-func TestActiveMobiles_HappyPath(t *testing.T) {
+func TestActiveHMSPatientIDs_HappyPath(t *testing.T) {
 	var gotPath, gotAuth, gotContentType string
 	var gotBody struct {
-		Mobiles []string `json:"mobiles"`
+		HMSPatientIDs []string `json:"hms_patient_ids"`
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -24,17 +24,17 @@ func TestActiveMobiles_HappyPath(t *testing.T) {
 			t.Fatalf("server: decode request body: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"active":["9876543210"]}`))
+		_, _ = w.Write([]byte(`{"active":["PA-mother"]}`))
 	}))
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	active, err := c.ActiveMobiles(context.Background(), "Bearer test-token", []string{"9876543210", "9000000000"})
+	active, err := c.ActiveHMSPatientIDs(context.Background(), "Bearer test-token", []string{"PA-mother", "PA-son"})
 	if err != nil {
-		t.Fatalf("ActiveMobiles returned error: %v", err)
+		t.Fatalf("ActiveHMSPatientIDs returned error: %v", err)
 	}
-	if !active["9876543210"] {
-		t.Fatalf("active[9876543210] = %v, want true", active["9876543210"])
+	if !active["PA-mother"] {
+		t.Fatalf("active[9876543210] = %v, want true", active["PA-mother"])
 	}
 	if active["9000000000"] {
 		t.Fatalf("active[9000000000] = %v, want false/absent", active["9000000000"])
@@ -49,12 +49,12 @@ func TestActiveMobiles_HappyPath(t *testing.T) {
 	if gotContentType != "application/json" {
 		t.Fatalf("Content-Type header = %q, want application/json", gotContentType)
 	}
-	if len(gotBody.Mobiles) != 2 || gotBody.Mobiles[0] != "9876543210" || gotBody.Mobiles[1] != "9000000000" {
-		t.Fatalf("request body mobiles = %v, want [9876543210 9000000000]", gotBody.Mobiles)
+	if len(gotBody.HMSPatientIDs) != 2 || gotBody.HMSPatientIDs[0] != "PA-mother" || gotBody.HMSPatientIDs[1] != "PA-son" {
+		t.Fatalf("request body hms_patient_ids = %v, want [PA-mother PA-son]", gotBody.HMSPatientIDs)
 	}
 }
 
-func TestActiveMobiles_NonOKStatusReturnsError(t *testing.T) {
+func TestActiveHMSPatientIDs_NonOKStatusReturnsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// A valid, decodable body on the 500 isolates the branch under test: only
 		// the status check can fail this test. (An empty body would ALSO fail
@@ -67,38 +67,38 @@ func TestActiveMobiles_NonOKStatusReturnsError(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	_, err := c.ActiveMobiles(context.Background(), "Bearer test-token", []string{"9876543210"})
+	_, err := c.ActiveHMSPatientIDs(context.Background(), "Bearer test-token", []string{"PA-mother"})
 	if err == nil {
-		t.Fatalf("ActiveMobiles returned nil error for a 500 response, want non-nil")
+		t.Fatalf("ActiveHMSPatientIDs returned nil error for a 500 response, want non-nil")
 	}
 }
 
-func TestActiveMobiles_ChunksAt200AndMergesResults(t *testing.T) {
-	// 250 unique mobiles: split into a 200 chunk and a 50 chunk. The active
+func TestActiveHMSPatientIDs_ChunksAt200AndMergesResults(t *testing.T) {
+	// 250 unique HMS patient IDs: split into a 200 chunk and a 50 chunk. The active
 	// mobile in each chunk must survive the merge.
-	mobiles := make([]string, 250)
-	for i := range mobiles {
-		mobiles[i] = fmt.Sprintf("9%09d", i)
+	ids := make([]string, 250)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("PA-%05d", i)
 	}
-	activeInFirstChunk := mobiles[0]    // index 0, in the first chunk
-	activeInSecondChunk := mobiles[210] // index 210, in the second chunk
+	activeInFirstChunk := ids[0]    // index 0, in the first chunk
+	activeInSecondChunk := ids[210] // index 210, in the second chunk
 
 	var mu sync.Mutex
 	var requests [][]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Mobiles []string `json:"mobiles"`
+			HMSPatientIDs []string `json:"hms_patient_ids"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("server: decode request body: %v", err)
 		}
 
 		mu.Lock()
-		requests = append(requests, body.Mobiles)
+		requests = append(requests, body.HMSPatientIDs)
 		mu.Unlock()
 
 		var active []string
-		for _, m := range body.Mobiles {
+		for _, m := range body.HMSPatientIDs {
 			if m == activeInFirstChunk || m == activeInSecondChunk {
 				active = append(active, m)
 			}
@@ -112,9 +112,9 @@ func TestActiveMobiles_ChunksAt200AndMergesResults(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	got, err := c.ActiveMobiles(context.Background(), "Bearer test-token", mobiles)
+	got, err := c.ActiveHMSPatientIDs(context.Background(), "Bearer test-token", ids)
 	if err != nil {
-		t.Fatalf("ActiveMobiles returned error: %v", err)
+		t.Fatalf("ActiveHMSPatientIDs returned error: %v", err)
 	}
 
 	if len(requests) != 2 {
@@ -138,37 +138,37 @@ func TestActiveMobiles_ChunksAt200AndMergesResults(t *testing.T) {
 	}
 }
 
-func TestActiveMobiles_DedupesBeforeSending(t *testing.T) {
+func TestActiveHMSPatientIDs_DedupesBeforeSending(t *testing.T) {
 	var gotMobiles []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Mobiles []string `json:"mobiles"`
+			HMSPatientIDs []string `json:"hms_patient_ids"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("server: decode request body: %v", err)
 		}
-		gotMobiles = body.Mobiles
+		gotMobiles = body.HMSPatientIDs
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"active":["9876543210"]}`))
+		_, _ = w.Write([]byte(`{"active":["PA-mother"]}`))
 	}))
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
 	// The same mobile twice — e.g. two staged records for family members sharing
 	// a phone — must be sent once.
-	got, err := c.ActiveMobiles(context.Background(), "Bearer test-token", []string{"9876543210", "9876543210"})
+	got, err := c.ActiveHMSPatientIDs(context.Background(), "Bearer test-token", []string{"PA-mother", "PA-mother"})
 	if err != nil {
-		t.Fatalf("ActiveMobiles returned error: %v", err)
+		t.Fatalf("ActiveHMSPatientIDs returned error: %v", err)
 	}
 	if len(gotMobiles) != 1 {
 		t.Fatalf("request carried %d mobiles, want 1 (deduped): %v", len(gotMobiles), gotMobiles)
 	}
-	if !got["9876543210"] {
+	if !got["PA-mother"] {
 		t.Fatalf("active[9876543210] = false, want true")
 	}
 }
 
-func TestActiveMobiles_CallerCtxCancelledReturnsError(t *testing.T) {
+func TestActiveHMSPatientIDs_CallerCtxCancelledReturnsError(t *testing.T) {
 	// Proves ctx is actually threaded into the chunk requests (not silently
 	// dropped in favour of only the client's own timeout): with the caller's
 	// ctx already expired, the very first request must fail fast rather than
@@ -183,19 +183,19 @@ func TestActiveMobiles_CallerCtxCancelledReturnsError(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 0)
 	defer cancel()
-	<-ctx.Done() // guarantee it's expired before ActiveMobiles ever sees it
+	<-ctx.Done() // guarantee it's expired before ActiveHMSPatientIDs ever sees it
 
 	c := NewClient(srv.URL)
-	_, err := c.ActiveMobiles(ctx, "Bearer test-token", []string{"9876543210"})
+	_, err := c.ActiveHMSPatientIDs(ctx, "Bearer test-token", []string{"PA-mother"})
 	if err == nil {
-		t.Fatalf("ActiveMobiles returned nil error for an already-expired ctx, want non-nil")
+		t.Fatalf("ActiveHMSPatientIDs returned nil error for an already-expired ctx, want non-nil")
 	}
 	if got := atomic.LoadInt32(&requests); got > 1 {
 		t.Fatalf("server received %d requests, want at most 1", got)
 	}
 }
 
-func TestActiveMobiles_MalformedBodyReturnsError(t *testing.T) {
+func TestActiveHMSPatientIDs_MalformedBodyReturnsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`not valid json`))
@@ -203,8 +203,8 @@ func TestActiveMobiles_MalformedBodyReturnsError(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	_, err := c.ActiveMobiles(context.Background(), "Bearer test-token", []string{"9876543210"})
+	_, err := c.ActiveHMSPatientIDs(context.Background(), "Bearer test-token", []string{"PA-mother"})
 	if err == nil {
-		t.Fatalf("ActiveMobiles returned nil error for a malformed body, want non-nil")
+		t.Fatalf("ActiveHMSPatientIDs returned nil error for a malformed body, want non-nil")
 	}
 }

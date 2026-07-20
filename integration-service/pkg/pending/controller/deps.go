@@ -19,5 +19,5 @@ type PendingStore interface {
 // caller's Authorization header and a batch of raw mobiles, which of them already
 // have an active consent? Defined here (consumer side) alongside PendingStore.
 type ConsentChecker interface {
-	ActiveMobiles(ctx context.Context, authHeader string, mobiles []string) (map[string]bool, error)
+	ActiveHMSPatientIDs(ctx context.Context, authHeader string, hmsPatientIDs []string) (map[string]bool, error)
 }

@@ -27,7 +27,7 @@ type Client struct {
 // the cap: split into chunks here and merge the results.
 const chunkSize = 200
 
-// lookupTimeout bounds the ENTIRE chunked lookup in ActiveMobiles, not any one
+// lookupTimeout bounds the ENTIRE chunked lookup in ActiveHMSPatientIDs, not any one
 // request: a large queue can take several chunks, and http.Client.Timeout
 // alone only caps each request individually, letting the total run well past
 // it. This must stay comfortably under admin-bff's 10s proxy timeout
@@ -40,15 +40,20 @@ const lookupTimeout = 3 * time.Second
 //
 // The 3s per-request timeout is a backstop against a single hung request; it
 // does not bound the overall chunked lookup — that's lookupTimeout, applied
-// once across all chunks in ActiveMobiles. On either the per-request or
+// once across all chunks in ActiveHMSPatientIDs. On either the per-request or
 // overall deadline, the caller fails open and renders the queue unbadged.
 func NewClient(baseURL string) *Client {
 	return &Client{baseURL: baseURL, client: &http.Client{Timeout: 3 * time.Second}}
 }
 
-// ActiveMobiles returns a set of the mobiles that currently have an active
-// consent. Mobiles go in the body, never the URL, so raw mobiles never reach an
-// access log.
+// ActiveHMSPatientIDs returns a set of the HMS patient IDs that currently have
+// an active consent.
+//
+// Keyed by HMS patient ID rather than mobile because a mobile identifies a
+// HOUSEHOLD: families share one number, so a mobile-keyed answer would report a
+// son active off his mother's consent, and the queue would disable his Send code
+// — silently denying him capture. Sending opaque IDs instead of raw mobiles also
+// keeps phone numbers off this hop entirely.
 //
 // authHeader is the caller's hospital JWT, forwarded verbatim. integration-service
 // and consent-service verify the same auth-service key and the token carries no
@@ -56,21 +61,21 @@ func NewClient(baseURL string) *Client {
 // downstream call — no second credential, and no privilege gained: admin-bff's
 // token can call consent-service directly anyway.
 //
-// mobiles is deduped before chunking (two staged records — e.g. family members —
-// can share a mobile) and sent in batches of at most chunkSize, merging the
-// per-chunk results into one map. The map is keyed by mobile, so deduping the
-// request cannot lose information: the caller looks up consented[r.Mobile] per
-// row, and a mobile present in any chunk's response ends up true in the merge.
-func (c *Client) ActiveMobiles(ctx context.Context, authHeader string, mobiles []string) (map[string]bool, error) {
+// ids are deduped before chunking and sent in batches of at most chunkSize,
+// merging the per-chunk results into one map. The map is keyed by HMS patient
+// ID, so deduping cannot lose information: the caller looks up
+// consented[r.HMSPatientID] per row, and an ID present in any chunk's response
+// ends up true in the merge.
+func (c *Client) ActiveHMSPatientIDs(ctx context.Context, authHeader string, ids []string) (map[string]bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, lookupTimeout)
 	defer cancel()
 
-	seen := make(map[string]bool, len(mobiles))
-	unique := make([]string, 0, len(mobiles))
-	for _, m := range mobiles {
-		if !seen[m] {
-			seen[m] = true
-			unique = append(unique, m)
+	seen := make(map[string]bool, len(ids))
+	unique := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			unique = append(unique, id)
 		}
 	}
 
@@ -80,46 +85,46 @@ func (c *Client) ActiveMobiles(ctx context.Context, authHeader string, mobiles [
 		if end > len(unique) {
 			end = len(unique)
 		}
-		got, err := c.activeMobilesChunk(ctx, authHeader, unique[start:end])
+		got, err := c.activeChunk(ctx, authHeader, unique[start:end])
 		if err != nil {
 			return nil, err
 		}
-		for m := range got {
-			active[m] = true
+		for id := range got {
+			active[id] = true
 		}
 	}
 	return active, nil
 }
 
-// activeMobilesChunk sends one request for at most chunkSize mobiles.
-func (c *Client) activeMobilesChunk(ctx context.Context, authHeader string, mobiles []string) (map[string]bool, error) {
-	body, err := json.Marshal(map[string][]string{"mobiles": mobiles})
+// activeChunk sends one request for at most chunkSize HMS patient IDs.
+func (c *Client) activeChunk(ctx context.Context, authHeader string, ids []string) (map[string]bool, error) {
+	body, err := json.Marshal(map[string][]string{"hms_patient_ids": ids})
 	if err != nil {
-		return nil, fmt.Errorf("consent.ActiveMobiles: marshal: %w", err)
+		return nil, fmt.Errorf("consent.ActiveHMSPatientIDs: marshal: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/consent/active", bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("consent.ActiveMobiles: new request: %w", err)
+		return nil, fmt.Errorf("consent.ActiveHMSPatientIDs: new request: %w", err)
 	}
 	req.Header.Set("Authorization", authHeader)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("consent.ActiveMobiles: %w", err)
+		return nil, fmt.Errorf("consent.ActiveHMSPatientIDs: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("consent.ActiveMobiles: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("consent.ActiveHMSPatientIDs: status %d", resp.StatusCode)
 	}
 
 	var out struct {
 		Active []string `json:"active"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("consent.ActiveMobiles: decode: %w", err)
+		return nil, fmt.Errorf("consent.ActiveHMSPatientIDs: decode: %w", err)
 	}
 
 	active := make(map[string]bool, len(out.Active))
