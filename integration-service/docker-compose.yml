@@ -1,5 +1,5 @@
 # integration-service — standalone compose (polyrepo style).
-# Requires shared EXTERNAL infra (redis on dpdp-network) — see ../DOCKER.md.
+# Requires shared EXTERNAL infra (redis + consent-service on dpdp-network) — see ../DOCKER.md.
 # Generate dev certs first:  bash certs/gen-dev-certs.sh
 services:
   integration-service:
@@ -12,6 +12,7 @@ services:
       INTEGRATION_SERVICE_PORT: "9009"
       INTEGRATION_WEBHOOK_PORT: "9443"
       REDIS_URL: "redis://redis:6379/0"
+      CONSENT_SERVICE_URL: "http://consent-service:9000"
       JWT_PUBLIC_KEY_PATH: /keys/auth_public.pem
       MTLS_SERVER_CERT: /certs/server.pem
       MTLS_SERVER_KEY: /certs/server.key

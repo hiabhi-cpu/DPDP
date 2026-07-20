@@ -14,3 +14,11 @@ type PendingStore interface {
 	List(ctx context.Context, hospitalID string) ([]model.PendingRegistration, error)
 	SetStatus(ctx context.Context, hospitalID, hmsPatientID, status string) error
 }
+
+// ConsentChecker is the slice of consent-service the read API needs: given the
+// caller's Authorization header and a batch of HMS patient IDs, which of those
+// patients already have an active consent? Keyed by patient, not by mobile — a
+// mobile names a household. Defined here (consumer side) alongside PendingStore.
+type ConsentChecker interface {
+	ActiveHMSPatientIDs(ctx context.Context, authHeader string, hmsPatientIDs []string) (map[string]bool, error)
+}

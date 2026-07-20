@@ -24,6 +24,7 @@ func Setup(r *gin.Engine, consentHandler *controller.ConsentHandler, pubKey *rsa
 			{
 				consent.POST("/capture", consentHandler.Capture)
 				consent.POST("/check", consentHandler.Check)
+				consent.POST("/active", consentHandler.Active)
 				consent.POST("/withdraw", consentHandler.Withdraw)
 				consent.POST("/grant", consentHandler.Grant)
 				consent.GET("/stats", consentHandler.Stats)

@@ -181,6 +181,64 @@ func (r *pgxConsentRepository) GetByIdempotencyKey(ctx context.Context, hospital
 	return c, nil
 }
 
+// ActiveHMSPatientIDs returns the subset of hmsPatientIDs that currently have
+// at least one active purpose.
+//
+// Keyed by HMS patient ID rather than patient_key because patient_key is derived
+// from the mobile and a family shares one number — a patient_key batch would
+// report a whole household active off one member's consent.
+//
+// It mirrors getOneConsent's RLS shape — its own transaction with
+// setHospitalContext — rather than reusing it, because getOneConsent is
+// single-row. This is not optional bookkeeping: consent_vault is FORCE ROW LEVEL
+// SECURITY, so querying r.pool directly returns zero rows and no error, which is
+// indistinguishable from "nobody has consented".
+//
+// The active test is AnyActive() on the latest row, NOT the status column —
+// emergency-service writes rows here whose status is not derived from the
+// purposes map, so the two can drift. Capture applies the same AnyActive()
+// predicate, so the queue and capture agree on what "already consented" means.
+//
+// They are scoped differently on purpose: Capture keys on the full pair, this
+// keys on hms_patient_id alone. See the INVARIANT note on
+// queryLatestByHMSPatientIDs for the one case where that matters.
+func (r *pgxConsentRepository) ActiveHMSPatientIDs(ctx context.Context, hospitalID string, hmsPatientIDs []string) (map[string]bool, error) {
+	active := make(map[string]bool, len(hmsPatientIDs))
+	if len(hmsPatientIDs) == 0 {
+		return active, nil
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("repository.ActiveHMSPatientIDs: begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if err := setHospitalContext(ctx, tx, hospitalID); err != nil {
+		return nil, fmt.Errorf("repository.ActiveHMSPatientIDs: %w", err)
+	}
+
+	rows, err := tx.Query(ctx, queryLatestByHMSPatientIDs, hospitalID, hmsPatientIDs)
+	if err != nil {
+		return nil, fmt.Errorf("repository.ActiveHMSPatientIDs: query failed: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		c, err := scanConsentRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("repository.ActiveHMSPatientIDs: scan failed: %w", err)
+		}
+		if c.AnyActive() {
+			active[c.HMSPatientID] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("repository.ActiveHMSPatientIDs: %w", err)
+	}
+	return active, nil
+}
+
 // insertChainedRow inserts a versioned consent row (withdrawal or renewal) and
 // its audit outbox row in one transaction. Both callers share identical column
 // order; only the query (row type) differs.

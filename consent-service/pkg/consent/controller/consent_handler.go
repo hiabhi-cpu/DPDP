@@ -79,6 +79,31 @@ func (h *ConsentHandler) Check(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// Active handles POST /api/v1/consent/active — batch "which of these patients
+// already have an active consent?". The reception queue uses it to badge
+// returning patients instead of sending them to a kiosk whose capture will 409.
+func (h *ConsentHandler) Active(c *gin.Context) {
+	hospitalID := c.GetString(middleware.CtxHospitalID)
+	if hospitalID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing hospital identity"})
+		return
+	}
+
+	var req model.ActiveConsentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "hms_patient_ids must be 1-200 non-empty entries"})
+		return
+	}
+
+	active, err := h.svc.ActiveHMSPatientIDs(c.Request.Context(), hospitalID, req.HMSPatientIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to look up consent"})
+		return
+	}
+
+	c.JSON(http.StatusOK, model.ActiveConsentResponse{Active: active})
+}
+
 // Withdraw handles POST /api/consent/v1/withdraw
 func (h *ConsentHandler) Withdraw(c *gin.Context) {
 	hospitalID := c.GetString(middleware.CtxHospitalID)

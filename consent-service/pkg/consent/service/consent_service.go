@@ -46,6 +46,10 @@ type ConsentService interface {
 	Capture(ctx context.Context, hospitalID, ip string, req *model.CaptureConsentRequest) (consent *model.Consent, created bool, err error)
 	// Check answers whether a specific purpose is currently allowed for a patient.
 	Check(ctx context.Context, hospitalID, ip string, req *model.CheckConsentRequest) (*model.CheckConsentResponse, error)
+	// ActiveHMSPatientIDs returns the subset of HMS patient IDs with at least one
+	// active purpose, in input order. Batch and purpose-agnostic — the reception
+	// queue's "already consented?" question. Writes no audit event; see the impl.
+	ActiveHMSPatientIDs(ctx context.Context, hospitalID string, hmsPatientIDs []string) ([]string, error)
 	Withdraw(ctx context.Context, hospitalID, ip string, req *model.WithdrawConsentRequest) error
 	// Grant extends an existing chain to (re-)grant purposes. changed=false means
 	// every requested purpose was already active (no new row written).
@@ -290,6 +294,37 @@ func (s *consentService) Check(ctx context.Context, hospitalID, ip string, req *
 	}
 
 	return &resp, nil
+}
+
+// ActiveHMSPatientIDs returns the subset of HMS patient IDs that currently have
+// at least one active consent purpose, in input order.
+//
+// Keyed by HMS patient ID: patient_key is derived from the mobile and families
+// share one number, so a mobile-keyed batch would report a whole household
+// active off one member's consent — badging a relative "already consented" and
+// disabling their Send code, which silently denies them capture.
+//
+// Unlike Check, this writes NO audit event, and that is deliberate. Check audits
+// because a doctor reading patient data is a data access. This is an operational
+// lookup: the reception queue polls it on a 5-second timer to decide whether to
+// badge a row, revealing nothing reception cannot already see on the screen in
+// front of them. Auditing a timer would add ~240 rows/minute of noise and bury
+// the real access log — that is less accountability, not more.
+func (s *consentService) ActiveHMSPatientIDs(ctx context.Context, hospitalID string, hmsPatientIDs []string) ([]string, error) {
+	activeIDs, err := s.repo.ActiveHMSPatientIDs(ctx, hospitalID, hmsPatientIDs)
+	if err != nil {
+		return nil, fmt.Errorf("ConsentService.ActiveHMSPatientIDs: %w", err)
+	}
+
+	// Walk the input, not the map: Go map order is random and the response should
+	// be deterministic.
+	active := make([]string, 0, len(activeIDs))
+	for _, id := range hmsPatientIDs {
+		if activeIDs[id] {
+			active = append(active, id)
+		}
+	}
+	return active, nil
 }
 
 func (s *consentService) Withdraw(ctx context.Context, hospitalID, ip string, req *model.WithdrawConsentRequest) error {

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hiabhi-cpu/integration-service/pkg/pending/repository"
 	"github.com/hiabhi-cpu/shared/middleware"
@@ -11,11 +12,12 @@ import (
 
 // ReadHandler serves the internal, hospital-scoped read API.
 type ReadHandler struct {
-	store PendingStore
+	store   PendingStore
+	consent ConsentChecker
 }
 
-func NewReadHandler(store PendingStore) *ReadHandler {
-	return &ReadHandler{store: store}
+func NewReadHandler(store PendingStore, consent ConsentChecker) *ReadHandler {
+	return &ReadHandler{store: store, consent: consent}
 }
 
 // listItem is the masked shape returned by List (no raw mobile on a list).
@@ -25,6 +27,7 @@ type listItem struct {
 	Mobile       string `json:"mobile"` // masked
 	RegisteredAt string `json:"registered_at"`
 	Status       string `json:"status"`
+	Consented    bool   `json:"consented"` // already has an active consent; no action needed
 }
 
 // List handles GET /internal/v1/registrations — pending records for the
@@ -41,6 +44,32 @@ func (h *ReadHandler) List(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "storage unavailable"})
 		return
 	}
+
+	// Ask consent-service which of these patients already consented, so reception
+	// can see "no action" instead of burning an SMS and a walk on a capture that
+	// will 409. Keyed by hms_patient_id, which is what capture blocks on. Keying
+	// on mobile would answer for the HOUSEHOLD — families share one number, so a
+	// son whose mother consented would be badged "already consented" with his
+	// Send code disabled, silently denying him capture. Sending IDs also keeps
+	// raw mobiles off the wire entirely.
+	//
+	// Fails open. On any error the flags stay false and the queue renders exactly
+	// as it did before this lookup existed: a consent-service blip costs a wasted
+	// SMS, never an empty reception board.
+	consented := map[string]bool{}
+	if len(recs) > 0 {
+		ids := make([]string, 0, len(recs))
+		for _, r := range recs {
+			ids = append(ids, r.HMSPatientID)
+		}
+		got, cerr := h.consent.ActiveHMSPatientIDs(c.Request.Context(), c.GetHeader("Authorization"), ids)
+		if cerr != nil {
+			log.Warnf("integration-service: consent lookup failed, queue renders unbadged: %v", cerr)
+		} else {
+			consented = got
+		}
+	}
+
 	items := make([]listItem, 0, len(recs))
 	for _, r := range recs {
 		items = append(items, listItem{
@@ -49,6 +78,7 @@ func (h *ReadHandler) List(c *gin.Context) {
 			Mobile:       maskMobile(r.Mobile),
 			RegisteredAt: r.RegisteredAt,
 			Status:       r.Status,
+			Consented:    consented[r.HMSPatientID],
 		})
 	}
 	c.JSON(http.StatusOK, items)

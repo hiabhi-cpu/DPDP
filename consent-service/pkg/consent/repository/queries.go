@@ -35,6 +35,35 @@ const (
 		ORDER BY version DESC LIMIT 1
 	`
 
+	// Reception-queue path: batch "which of these patients already have consent?".
+	// DISTINCT ON takes the highest-version row per hms_patient_id — the
+	// append-only vault's current state for each person. The caller applies
+	// AnyActive() to the Purposes map rather than filtering on status here.
+	//
+	// Keyed by hms_patient_id, not patient_key: patient_key is derived from the
+	// mobile, and a family shares one number, so a patient_key batch answers for
+	// the household. No pair is needed — hms_patient_id already names the person.
+	//
+	// INVARIANT: this asks the same question as Check (queryGetLatestByHMSPatientID),
+	// NOT the same one as Capture, which scopes by the full pair. The two differ for
+	// a patient who changed mobile: their old chain sits under a superseded
+	// patient_key, so the queue badges them consented while Capture would not block.
+	// That is the intended trade — the person genuinely does have active consent on
+	// file, and the queue agreeing with what a doctor's Check reports is the more
+	// useful of the two. The failure direction is a wasted SMS, never a silent denial.
+	//
+	// ponytail: ORDER BY version DESC returns a stale row when a fresh capture
+	// follows a full withdrawal (new chains restart at version 1). Fail-safe — the
+	// patient shows unbadged and gets a code they did not need — and Capture orders
+	// identically, so the two still agree. Upgrade: ORDER BY created_at DESC,
+	// version DESC, changed at both call sites together.
+	queryLatestByHMSPatientIDs = `
+		SELECT DISTINCT ON (hms_patient_id) ` + consentColumns + `
+		FROM consent.consent_vault
+		WHERE hospital_id = $1 AND hms_patient_id = ANY($2)
+		ORDER BY hms_patient_id, version DESC
+	`
+
 	queryGetByIdempotencyKey = `
 		SELECT ` + consentColumns + `
 		FROM consent.consent_vault
