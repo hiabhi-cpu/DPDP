@@ -95,28 +95,16 @@ This reverses a decision from the previous branch, which stripped `export` off
 `RETRY_STATUSES` because its only consumer had been dropped. There is now a real
 consumer — but for `retryable`, not the raw set. `RETRY_STATUSES` stays private.
 
-**Copy cost: one new string.** The unreachable-service fix adds none — it reuses
-the message the hung path already renders. The 403 case adds exactly one string,
-"Your code has expired — please ask the front desk to resend.", which must be
-translated under the §5(3) notice-language work (P2) and the 22-language pack
-(P4). Accepted deliberately (2026-07-20): the generic fallback is correct advice
-for a 403 but does not tell the patient *why*, and "expired" is the difference
-between a patient who asks for a resend and one who thinks the kiosk is broken.
+**Copy cost.** The unreachable-service fix adds no string — it reuses what the hung
+path already renders. The 403 adds one, translatable under §5(3)/P4. Accepted:
+"expired" is the difference between a patient who asks for a resend and one who
+reports a broken kiosk.
 
 **Branch order matters.** `retryable` must be tested first. Neither 409 nor 403 is
 in `RETRY_STATUSES`, so `retryable` is false for both and their branches are still
 reached — but because `retryable` no longer proves the type, the status checks now
 need an `e instanceof ApiError` guard, which is why they are nested rather than
 flat.
-
-Resulting map, every branch reachable:
-
-| Thrown | Message |
-|---|---|
-| thrown fetch (hung / timeout abort), 502, 503, 504 | "Something went wrong. Please try again." |
-| 409 | "You have already given consent — nothing more to do." |
-| 403 | "Your code has expired — please ask the front desk to resend." |
-| 400, 500, anything else | "We could not save your consent. Please ask the front desk for help." |
 
 ## Out of scope
 
@@ -134,14 +122,9 @@ Two tests in `frontend/kiosk/src/App.test.tsx`:
    sent to the front desk.
 2. **403** → the patient is told the code expired and to ask for a resend.
 
-Both must fail against today's code, which renders "We could not save your
-consent. Please ask the front desk for help." for each. Verify by running them
-before the change — a test that passes either way proves nothing here, since the
-current string also contains "front desk".
-
-For that reason test 1 must assert on the *specific* new text ("try again"), not
-merely the absence of "front desk"; and test 2 must assert on "expired", which no
-current message contains.
+Both must fail first — today's generic message also contains "front desk", so a
+test asserting merely its absence would pass either way. Assert on "try again"
+and "expired", the words no current message has.
 
 The existing 409 test ("a capture failure does NOT blame the code — an
 already-consented patient is told so") guards the branch being reordered and must
