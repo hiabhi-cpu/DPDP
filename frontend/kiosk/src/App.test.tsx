@@ -93,6 +93,64 @@ describe("code-only kiosk", () => {
     expect(await screen.findByText(/expired/i)).toBeInTheDocument();
   });
 
+  it("an expired session sends the patient back to the code step, not just a message", async () => {
+    const user = userEvent.setup();
+    mockFetchSequence([
+      new Response(JSON.stringify({ session_id: "sess-1", mobile: "9744411133", name: "Priya Shah", hms_patient_id: "PA-1" }), { status: 200 }),
+      // 403 = the OTP session expired while the patient read the notice. The
+      // consent step has no code field, so the only usable place for a
+      // resent code to land is back on the code step.
+      new Response(JSON.stringify({ error: "otp session invalid or expired — verify OTP first" }), { status: 403 }),
+    ]);
+
+    render(<App />);
+    await user.type(screen.getByLabelText(/6-digit code/i), "123456");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+    await user.click(await screen.findByRole("button", { name: /confirm/i }));
+
+    // Back on the code step: the input is present again and the expired
+    // message (the distinguishing word "expired") is showing there.
+    expect(await screen.findByLabelText(/6-digit code/i)).toBeInTheDocument();
+    expect(await screen.findByText(/expired/i)).toBeInTheDocument();
+  });
+
+  it("a code-service outage says try again — not that the code was wrong", async () => {
+    const user = userEvent.setup();
+    // resolveClaim never retries (it's capped per-hospital by construction),
+    // so a single 502 response is the whole story here.
+    mockFetchSequence([
+      new Response(JSON.stringify({ error: "code service unavailable" }), { status: 502 }),
+    ]);
+
+    render(<App />);
+    await user.type(screen.getByLabelText(/6-digit code/i), "123456");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+
+    // Assert the distinguishing text: NOT "front desk to resend" (which a
+    // healthy 401 codepath also produces), but the transient-failure copy.
+    expect(await screen.findByText(/try again/i)).toBeInTheDocument();
+    expect(screen.queryByText(/code not recognized/i)).not.toBeInTheDocument();
+  });
+
+  it("a 500 on capture stays generic — a server bug is not a retry", async () => {
+    const user = userEvent.setup();
+    // 500 is deliberately outside RETRY_STATUSES ({502,503,504}): a genuine
+    // server bug must never be told to the patient as "try again". This
+    // pins the coupling between the retry set and this copy so the two
+    // cannot silently drift apart.
+    mockFetchSequence([
+      new Response(JSON.stringify({ session_id: "sess-1", mobile: "9744411133", name: "Priya Shah", hms_patient_id: "PA-1" }), { status: 200 }),
+      new Response(JSON.stringify({ error: "internal error" }), { status: 500 }),
+    ]);
+
+    render(<App />);
+    await user.type(screen.getByLabelText(/6-digit code/i), "123456");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+    await user.click(await screen.findByRole("button", { name: /confirm/i }));
+
+    expect(await screen.findByText(/we could not save your consent/i)).toBeInTheDocument();
+  });
+
   it("purpose checkboxes are disabled while the capture is in flight", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup();
