@@ -23,7 +23,7 @@ export function Consent({ busy, error, name, onConfirm }: {
         {PURPOSES.map((p) => (
           <li key={p.key}>
             <label>
-              <input type="checkbox" checked={granted[p.key]} onChange={() => toggle(p.key)} />
+              <input type="checkbox" checked={granted[p.key]} onChange={() => toggle(p.key)} disabled={busy} />
               <span><strong>{p.label}</strong> — {p.description}</span>
             </label>
           </li>
@@ -31,7 +31,7 @@ export function Consent({ busy, error, name, onConfirm }: {
       </ul>
       {error && <p className="error" role="alert">{error}</p>}
       <button className="primary" disabled={busy || chosen.length === 0} onClick={() => onConfirm(chosen)}>
-        Confirm
+        {busy ? "Saving…" : "Confirm"}
       </button>
     </section>
   );
