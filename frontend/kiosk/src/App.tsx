@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { resolveClaim, capture, ApiError } from "./api/kiosk";
+import { resolveClaim, capture, ApiError, retryable } from "./api/kiosk";
 import { Code } from "./steps/Code";
 import { Consent } from "./steps/Consent";
 import { Done } from "./steps/Done";
@@ -43,9 +43,12 @@ export function App() {
   }
 
   function consentError(e: unknown): string {
-    if (!(e instanceof ApiError)) return "Something went wrong. Please try again.";
+    // Same predicate the retry loop uses: if it was worth retrying
+    // automatically, it is worth the patient pressing again. Hung and refused
+    // are the same situation to them, so they must not get different advice.
+    if (retryable(e)) return "Something went wrong. Please try again.";
     // 409 = an active consent already exists for this patient (a re-visit).
-    if (e.status === 409) return "You have already given consent — nothing more to do.";
+    if (e instanceof ApiError && e.status === 409) return "You have already given consent — nothing more to do.";
     // Anything else: stay generic, never surface an internal error on a kiosk.
     return "We could not save your consent. Please ask the front desk for help.";
   }

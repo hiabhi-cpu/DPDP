@@ -21,7 +21,7 @@ const RETRY_STATUSES = new Set([502, 503, 504]);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function retryable(e: unknown): boolean {
+export function retryable(e: unknown): boolean {
   return !(e instanceof ApiError) || RETRY_STATUSES.has(e.status);
 }
 
