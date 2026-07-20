@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { resolveClaim, capture, ApiError } from "./api/kiosk";
+import { resolveClaim, capture, ApiError, retryable } from "./api/kiosk";
 import { Code } from "./steps/Code";
 import { Consent } from "./steps/Consent";
 import { Done } from "./steps/Done";
@@ -37,15 +37,24 @@ export function App() {
   // resolve the code is already proven good, so a capture failure must never
   // send the patient back to the front desk for a pointless resend.
   function codeError(e: unknown): string {
-    return e instanceof ApiError
-      ? "Code not recognized — please ask the front desk to resend."
-      : "Something went wrong. Please try again.";
+    // Same predicate the retry loop uses: a transient failure (network/abort,
+    // or a 502/503/504 from a flaky upstream) is not evidence the code was
+    // wrong, so it must not tell the patient to get a resend.
+    // retryable(e) is false only when e is an ApiError outside the retry set
+    // (see its definition below), so the ApiError case is the only one left.
+    if (retryable(e)) return "Something went wrong. Please try again.";
+    return "Code not recognized — please ask the front desk to resend.";
   }
 
   function consentError(e: unknown): string {
-    if (!(e instanceof ApiError)) return "Something went wrong. Please try again.";
+    // Same predicate the retry loop uses: if it was worth retrying
+    // automatically, it is worth the patient pressing again. Hung and refused
+    // are the same situation to them, so they must not get different advice.
+    if (retryable(e)) return "Something went wrong. Please try again.";
     // 409 = an active consent already exists for this patient (a re-visit).
-    if (e.status === 409) return "You have already given consent — nothing more to do.";
+    if (e instanceof ApiError && e.status === 409) return "You have already given consent — nothing more to do.";
+    // 403 (expired session) is handled in onConfirm's catch, which sends the
+    // patient back to the code step before this function is ever consulted.
     // Anything else: stay generic, never surface an internal error on a kiosk.
     return "We could not save your consent. Please ask the front desk for help.";
   }
@@ -74,6 +83,13 @@ export function App() {
       await capture(mobile, sessionId, purposes, hmsPatientId);
       setStep("done");
     } catch (e) {
+      if (e instanceof ApiError && e.status === 403) {
+        // Send them back to where a code can be typed — the resent code needs
+        // a field waiting for it, and the consent step has none.
+        reset();
+        setError("Your code has expired — please ask the front desk to resend.");
+        return;
+      }
       setError(consentError(e));
     } finally {
       setBusy(false);
