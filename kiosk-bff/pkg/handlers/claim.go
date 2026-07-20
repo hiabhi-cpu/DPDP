@@ -131,7 +131,13 @@ func (h *ClaimHandler) Capture(c *gin.Context) {
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
 
-	if resp.StatusCode == http.StatusCreated {
+	// 201 = the consent was just written. 200 = consent-service replayed an
+	// idempotency key and returned the original row — which the kiosk's capture
+	// retry produces whenever the first attempt landed but its response was
+	// lost. Both mean the consent IS in the vault, so both must clear the
+	// reception queue; treating 200 as "not done" leaves staff chasing a patient
+	// who already consented.
+	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
 		var req struct {
 			HMSPatientID string `json:"hms_patient_id"`
 		}
