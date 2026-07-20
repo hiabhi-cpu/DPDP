@@ -82,12 +82,17 @@ no privacy and leaves `patient_key` a redundant derived column.
 
   ```sql
   CHECK (
-    type NOT IN ('CONSENT_GIVEN','WITHDRAWAL','CONSENT_RENEWAL')
+    type = 'EMERGENCY_OVERRIDE'
     OR hms_patient_id IS NOT NULL
   )
   ```
 
-  `EMERGENCY_OVERRIDE` and `RETROSPECTIVE_CONSENT` rows are exempt.
+  Only `EMERGENCY_OVERRIDE` is exempt. `RETROSPECTIVE_CONSENT` is a consent row
+  and must name a patient — it is written after an emergency, once the patient
+  *is* identified, which is the whole point of converting the override into a
+  consent record. Nothing writes that type today (it exists only in the schema's
+  type list), so requiring the ID costs nothing now and encodes the rule for
+  whoever builds the flow.
 
 `queryGetLatestConsent` (`repository/queries.go:21`) gains
 `AND hms_patient_id = $3`, and `GetLatestByPatientKey` becomes
@@ -104,19 +109,23 @@ it is the one function all three broken paths route through.
 `Check` needs no query change — it already routes HMS-ID lookups through
 `GetLatestByHMSPatientID` (`consent_service.go:230`). But its mobile-only branch
 becomes indefensible: with a shared number it returns whichever family member
-consented last. So `CheckConsentRequest` drops the "exactly one of mobile or
-hms_patient_id" rule and **requires `hms_patient_id` always**. The doctor path
-already sends the HMS ID; the kiosk has it from `claim.Ref`.
+consented last. So `CheckConsentRequest` **drops `Mobile` entirely** and requires
+`hms_patient_id`. The doctor path already sends the HMS ID; the kiosk has it
+from `claim.Ref`.
 
-Mobile stays optional on check, and when supplied it is a **cross-check, not a
-selector**: the resolved row's `patient_key` must equal `HMAC(mobile)`, and a
-mismatch is a 400 rather than a silent fallback to a different patient. A caller
-that knows both must be consistent about them.
+Mobile is not kept as an optional cross-check. It would select nothing —
+`hms_patient_id` is already unique per hospital — and identity on the write
+paths is pinned by the session↔ref binding in section 2, so a mobile comparison
+guards nothing that is not already guarded. Dropping the field also deletes the
+existing "exactly one of mobile or hms_patient_id" branch at
+`controller/consent_handler.go:74-83`, making this a net removal.
 
-The index at `0003_consent_vault.sql:66` extends to
-`(hospital_id, patient_key, hms_patient_id, status)`. The comment at
+**No index change.** The existing `idx_cv_patient_hospital_status`
+(`0003_consent_vault.sql:66`) already narrows to a single household — under ten
+rows — and Postgres filters `hms_patient_id` from there. Widening it to four
+columns is a migration for no measurable gain. The comment at
 `0003_consent_vault.sql:7` claiming `patient_key` identifies the patient is
-corrected to say what it actually is.
+still corrected to say what it actually is.
 
 ### 2. Binding the OTP session to the patient
 
@@ -178,8 +187,9 @@ This change does **not** alter key derivation, so no artifact hash is
 invalidated and nothing needs rehashing. The only reason to wipe is that
 existing rows have NULL `hms_patient_id` and would fail the new constraint.
 
-- Truncate `consent_vault`, `audit_log`, and both outbox tables.
-- Flush the Redis staging and OTP session keys.
+`TRUNCATE consent.consent_vault` — that is the whole migration. `audit_log` and
+the outboxes gain no constraint and need no wipe, and OTP sessions expire in
+minutes on their own.
 
 The append-only triggers do not block this — they are
 `FOR EACH ROW BEFORE UPDATE/DELETE`, and TRUNCATE does not fire them.
@@ -192,8 +202,6 @@ The first test is the whole point — it fails today with a 409:
   captures on the **same mobile** with `PA-son` — succeeds.
 - **consent-service:** withdraw targets only the named patient and leaves the
   sibling's consent active.
-- **consent-service:** check with mobile + HMS ID returns the right person's
-  answer.
 - **notification-service:** validate rejects a session whose stored `ref` does
   not match the supplied `hms_patient_id`; a ref-less session is rejected
   outright.
