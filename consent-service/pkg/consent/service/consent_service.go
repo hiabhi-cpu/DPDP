@@ -198,7 +198,16 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 		ConsentID:  &consentID,
 		RequestID:  uuid.New(),
 		IPAddress:  ip,
-		Details:    map[string]any{"purposes": req.Purposes, "session_id": req.SessionID},
+		// ponytail: hms_patient_id rides in details JSONB rather than its own
+		// audit_log column. idx_audit_patient_key narrows to the household (a
+		// handful of rows), then this field picks the individual — fine at pilot
+		// scale. If per-household audit volume grows, promote it to a column
+		// with its own index.
+		Details: map[string]any{
+			"purposes":       req.Purposes,
+			"session_id":     req.SessionID,
+			"hms_patient_id": req.HMSPatientID,
+		},
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("ConsentService.Capture: %w", err)
@@ -366,6 +375,7 @@ func (s *consentService) Withdraw(ctx context.Context, hospitalID, ip string, re
 			"previous_id":        existing.ID,
 			"withdrawn_purposes": withdrawn,
 			"remaining_status":   withdrawnConsent.Status,
+			"hms_patient_id":     req.HMSPatientID,
 		},
 	})
 	if err != nil {
@@ -460,6 +470,7 @@ func (s *consentService) Grant(ctx context.Context, hospitalID, ip string, req *
 			"previous_id":      existing.ID,
 			"granted_purposes": granted,
 			"renewal":          true,
+			"hms_patient_id":   req.HMSPatientID,
 		},
 	})
 	if err != nil {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -24,6 +25,7 @@ type fakeIdentityRepo struct {
 	hmsRows                      map[string]*model.Consent
 	inserted                     []*model.Consent
 	withdrawn                    []*model.Consent
+	lastOutbox                   *model.OutboxRecord
 }
 
 func (f *fakeIdentityRepo) GetLatestByPatientAndHMS(_ context.Context, _, patientKey, hmsPatientID string) (*model.Consent, error) {
@@ -40,8 +42,9 @@ func (f *fakeIdentityRepo) GetByIdempotencyKey(context.Context, string, string) 
 	return nil, nil
 }
 
-func (f *fakeIdentityRepo) Insert(_ context.Context, c *model.Consent, _ *model.OutboxRecord) error {
+func (f *fakeIdentityRepo) Insert(_ context.Context, c *model.Consent, o *model.OutboxRecord) error {
 	f.inserted = append(f.inserted, c)
+	f.lastOutbox = o
 	return nil
 }
 
@@ -157,5 +160,31 @@ func TestCheckAnswersForTheNamedPatient(t *testing.T) {
 	}
 	if resp.Allowed {
 		t.Fatal("son withdrew treatment; check must not report allowed")
+	}
+}
+
+// The audit trail must name the individual. actor_id and patient_key are both
+// derived from the shared family mobile, so without hms_patient_id in details a
+// household's events are indistinguishable from one another.
+func TestCaptureAuditCarriesHMSPatientID(t *testing.T) {
+	repo := &fakeIdentityRepo{existing: map[string]*model.Consent{}}
+	svc := NewConsentService(repo, fakeSecrets{}, okSessions{})
+
+	_, _, err := svc.Capture(context.Background(), "hosp-1", "1.2.3.4", &model.CaptureConsentRequest{
+		Mobile:       familyMobile,
+		SessionID:    "sess-son",
+		Purposes:     []string{"treatment"},
+		HMSPatientID: "PA-son",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var event AuditEvent
+	if err := json.Unmarshal(repo.lastOutbox.Payload, &event); err != nil {
+		t.Fatalf("unmarshal outbox payload: %v", err)
+	}
+	if got := event.Details["hms_patient_id"]; got != "PA-son" {
+		t.Fatalf("details[hms_patient_id] = %v, want PA-son", got)
 	}
 }
