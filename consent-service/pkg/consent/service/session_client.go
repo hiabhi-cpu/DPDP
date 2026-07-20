@@ -12,15 +12,19 @@ import (
 )
 
 // SessionVerifier confirms that a session_id presented with a capture,
-// withdrawal, or grant is a live OTP-verified session for the same mobile.
-// This is the link that makes the vault's otp_verified column truthful: no
-// consent row is written unless notification-service actually verified an OTP
-// for that patient within the session window.
+// withdrawal, or grant is a live OTP-verified session for the same mobile AND
+// the same patient. This is the link that makes the vault's otp_verified column
+// truthful: no consent row is written unless notification-service actually
+// verified an OTP for that patient within the session window.
+//
+// The patient half matters because a family shares one mobile: without it, an
+// OTP issued for one member would authorize a consent named for another, and
+// the pairing would rest on the caller's good manners rather than on a check.
 type SessionVerifier interface {
 	// Verify returns nil when the session is valid, ErrSessionNotVerified when
 	// notification-service rejects it, and a wrapped error on transport failure
 	// (fail closed — an unreachable verifier must never admit a consent).
-	Verify(ctx context.Context, sessionID, mobile string) error
+	Verify(ctx context.Context, sessionID, mobile, hmsPatientID string) error
 }
 
 type httpSessionVerifier struct {
@@ -40,17 +44,22 @@ func NewSessionVerifier(baseURL string, tokens *serviceauth.Client) SessionVerif
 }
 
 type validateSessionRequest struct {
-	SessionID string `json:"session_id"`
-	Mobile    string `json:"mobile"`
+	SessionID    string `json:"session_id"`
+	Mobile       string `json:"mobile"`
+	HMSPatientID string `json:"hms_patient_id"`
 }
 
-func (v *httpSessionVerifier) Verify(ctx context.Context, sessionID, mobile string) error {
+func (v *httpSessionVerifier) Verify(ctx context.Context, sessionID, mobile, hmsPatientID string) error {
 	token, err := v.tokens.Token(ctx)
 	if err != nil {
 		return fmt.Errorf("SessionVerifier: get service token: %w", err)
 	}
 
-	body, err := json.Marshal(validateSessionRequest{SessionID: sessionID, Mobile: mobile})
+	body, err := json.Marshal(validateSessionRequest{
+		SessionID:    sessionID,
+		Mobile:       mobile,
+		HMSPatientID: hmsPatientID,
+	})
 	if err != nil {
 		return fmt.Errorf("SessionVerifier: marshal request: %w", err)
 	}

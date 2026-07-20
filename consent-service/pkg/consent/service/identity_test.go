@@ -62,7 +62,20 @@ func (fakeSecrets) GetHospitalKey(context.Context, string) (string, error) {
 
 type okSessions struct{}
 
-func (okSessions) Verify(context.Context, string, string) error { return nil }
+func (okSessions) Verify(context.Context, string, string, string) error { return nil }
+
+// recordingSessions captures what the service told the verifier, so a test can
+// assert the session was checked against the PATIENT and not just the mobile.
+type recordingSessions struct {
+	gotSession string
+	gotMobile  string
+	gotHMS     string
+}
+
+func (r *recordingSessions) Verify(_ context.Context, sessionID, mobile, hmsPatientID string) error {
+	r.gotSession, r.gotMobile, r.gotHMS = sessionID, mobile, hmsPatientID
+	return nil
+}
 
 func familyKey() string {
 	return sharedcrypto.ComputePatientKey(familyMobile, testSalt, testHospKey)
@@ -186,5 +199,32 @@ func TestCaptureAuditCarriesHMSPatientID(t *testing.T) {
 	}
 	if got := event.Details["hms_patient_id"]; got != "PA-son" {
 		t.Fatalf("details[hms_patient_id] = %v, want PA-son", got)
+	}
+}
+
+// The verifier must be told WHICH patient the capture is for. Without it, the
+// pairing of session to patient rests on the caller being well-behaved: an OTP
+// issued for the son would vouch for a consent naming the mother, since both
+// share the mobile the session was verified against.
+func TestCaptureForwardsPatientToSessionVerifier(t *testing.T) {
+	repo := &fakeIdentityRepo{existing: map[string]*model.Consent{}}
+	sessions := &recordingSessions{}
+	svc := NewConsentService(repo, fakeSecrets{}, sessions)
+
+	_, _, err := svc.Capture(context.Background(), "hosp-1", "1.2.3.4", &model.CaptureConsentRequest{
+		Mobile:       familyMobile,
+		SessionID:    "sess-son",
+		Purposes:     []string{"treatment"},
+		HMSPatientID: "PA-son",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sessions.gotHMS != "PA-son" || sessions.gotMobile != familyMobile {
+		t.Fatalf("Verify got (mobile=%q, hms=%q), want (%q, PA-son)",
+			sessions.gotMobile, sessions.gotHMS, familyMobile)
+	}
+	if sessions.gotSession != "sess-son" {
+		t.Fatalf("Verify got session %q, want sess-son", sessions.gotSession)
 	}
 }

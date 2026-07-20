@@ -140,7 +140,7 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 	// The session check runs AFTER the idempotency replay (a replay returns the
 	// original row even once its session has expired) but BEFORE any write: a
 	// consent row must never exist without a real OTP verification behind it.
-	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile); err != nil {
+	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile, req.HMSPatientID); err != nil {
 		return nil, false, fmt.Errorf("ConsentService.Capture: %w", err)
 	}
 
@@ -293,7 +293,7 @@ func (s *consentService) Withdraw(ctx context.Context, hospitalID, ip string, re
 	}
 
 	// A withdrawal mutates legal state — it needs the same OTP proof as capture.
-	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile); err != nil {
+	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile, req.HMSPatientID); err != nil {
 		return fmt.Errorf("ConsentService.Withdraw: %w", err)
 	}
 
@@ -400,7 +400,7 @@ func (s *consentService) Grant(ctx context.Context, hospitalID, ip string, req *
 	}
 
 	// A grant creates new processing permission — same OTP proof as capture.
-	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile); err != nil {
+	if err := s.sessions.Verify(ctx, req.SessionID, req.Mobile, req.HMSPatientID); err != nil {
 		return nil, false, fmt.Errorf("ConsentService.Grant: %w", err)
 	}
 
