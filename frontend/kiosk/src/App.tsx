@@ -47,8 +47,13 @@ export function App() {
     // automatically, it is worth the patient pressing again. Hung and refused
     // are the same situation to them, so they must not get different advice.
     if (retryable(e)) return "Something went wrong. Please try again.";
-    // 409 = an active consent already exists for this patient (a re-visit).
-    if (e instanceof ApiError && e.status === 409) return "You have already given consent — nothing more to do.";
+    if (e instanceof ApiError) {
+      // 409 = an active consent already exists for this patient (a re-visit).
+      if (e.status === 409) return "You have already given consent — nothing more to do.";
+      // The session outlived the patient's time on this screen. Only a fresh
+      // code fixes it, so name the cause instead of the generic "ask for help".
+      if (e.status === 403) return "Your code has expired — please ask the front desk to resend.";
+    }
     // Anything else: stay generic, never surface an internal error on a kiosk.
     return "We could not save your consent. Please ask the front desk for help.";
   }

@@ -74,6 +74,25 @@ describe("code-only kiosk", () => {
     expect(screen.queryByText(/ask the front desk to resend/i)).not.toBeInTheDocument();
   });
 
+  it("an expired session tells the patient the code expired", async () => {
+    const user = userEvent.setup();
+    mockFetchSequence([
+      new Response(JSON.stringify({ session_id: "sess-1", mobile: "9744411133", name: "Priya Shah", hms_patient_id: "PA-1" }), { status: 200 }),
+      // 403 = the OTP session expired while the patient read the notice.
+      // Not retried: a 4xx is deterministic, so ONE capture response suffices.
+      new Response(JSON.stringify({ error: "otp session invalid or expired — verify OTP first" }), { status: 403 }),
+    ]);
+
+    render(<App />);
+    await user.type(screen.getByLabelText(/6-digit code/i), "123456");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+    await user.click(await screen.findByRole("button", { name: /confirm/i }));
+
+    // "expired" is the only word no current message contains. Do NOT assert on
+    // "ask the front desk to resend" — the code-step message says that too.
+    expect(await screen.findByText(/expired/i)).toBeInTheDocument();
+  });
+
   it("purpose checkboxes are disabled while the capture is in flight", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup();
