@@ -87,13 +87,19 @@ const (
 	// ── Stats aggregates (read-only) ──────────────────────────────────────────
 	// Latest row per patient (excluding emergency rows and unknown identities),
 	// counted by aggregate status. RLS scopes all of these to one hospital.
+	//
+	// DISTINCT ON is the PAIR, not patient_key: a family shares one mobile and
+	// therefore one patient_key, so keying on it alone would count a household
+	// as a single patient and pick one member's status arbitrarily. Emergency
+	// rows are already excluded, which is exactly the set migration 0015
+	// guarantees has a non-null hms_patient_id.
 	queryStatsStatusCounts = `
 		WITH latest AS (
-			SELECT DISTINCT ON (patient_key) patient_key, status
+			SELECT DISTINCT ON (patient_key, hms_patient_id) patient_key, status
 			FROM consent.consent_vault
 			WHERE type <> 'EMERGENCY_OVERRIDE'
 			  AND patient_key IS NOT NULL
-			ORDER BY patient_key, version DESC
+			ORDER BY patient_key, hms_patient_id, version DESC
 		)
 		SELECT
 			count(*) FILTER (WHERE status = 'ACTIVE')    AS active,
@@ -102,13 +108,14 @@ const (
 		FROM latest
 	`
 
+	// Same pair-scoping as queryStatsStatusCounts — see the note there.
 	queryStatsByPurpose = `
 		WITH latest AS (
-			SELECT DISTINCT ON (patient_key) patient_key, purposes
+			SELECT DISTINCT ON (patient_key, hms_patient_id) patient_key, purposes
 			FROM consent.consent_vault
 			WHERE type <> 'EMERGENCY_OVERRIDE'
 			  AND patient_key IS NOT NULL
-			ORDER BY patient_key, version DESC
+			ORDER BY patient_key, hms_patient_id, version DESC
 		)
 		SELECT kv.key AS purpose,
 			count(*) FILTER (WHERE kv.value = 'ACTIVE')    AS active,
