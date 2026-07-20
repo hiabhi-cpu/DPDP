@@ -166,10 +166,16 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 	// recompute and compare it — that recomputability IS the tamper evidence.
 	consentID := uuid.New()
 	createdAt := time.Now().UTC().Truncate(time.Microsecond)
+	// hms_patient_id is hashed alongside patient_key because the PAIR is the
+	// data principal. patient_key alone names a household (families share a
+	// mobile), so a hash binding only it would attest that "the household
+	// consented" — and would still verify after the field naming the actual
+	// person was altered.
 	artifactHash := sharedcrypto.ComputeArtifactHash(
 		consentID.String(),
 		hospitalID,
 		patientKey,
+		req.HMSPatientID,
 		canonicalPurposeMap(purposes),
 		hashTimestamp(createdAt),
 	)
@@ -336,10 +342,12 @@ func (s *consentService) Withdraw(ctx context.Context, hospitalID, ip string, re
 
 	newID := uuid.New()
 	createdAt := time.Now().UTC().Truncate(time.Microsecond)
+	// Same field order as Capture — the pair identifies the data principal.
 	artifactHash := sharedcrypto.ComputeArtifactHash(
 		newID.String(),
 		hospitalID,
 		patientKey,
+		req.HMSPatientID,
 		canonicalPurposeMap(newMap),
 		hashTimestamp(createdAt),
 	)
@@ -433,10 +441,12 @@ func (s *consentService) Grant(ctx context.Context, hospitalID, ip string, req *
 
 	newID := uuid.New()
 	createdAt := time.Now().UTC().Truncate(time.Microsecond)
+	// Same field order as Capture — the pair identifies the data principal.
 	artifactHash := sharedcrypto.ComputeArtifactHash(
 		newID.String(),
 		hospitalID,
 		patientKey,
+		req.HMSPatientID,
 		canonicalPurposeMap(newMap),
 		hashTimestamp(createdAt),
 	)

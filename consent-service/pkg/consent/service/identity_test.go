@@ -228,3 +228,42 @@ func TestCaptureForwardsPatientToSessionVerifier(t *testing.T) {
 		t.Fatalf("Verify got session %q, want sess-son", sessions.gotSession)
 	}
 }
+
+// The artifact hash is the row's tamper evidence, and its whole value is that
+// anyone can RECOMPUTE it from the stored fields and compare. This test pins the
+// exact field set by doing that recomputation — including hms_patient_id.
+//
+// It fails if the service stops hashing the patient, which matters because
+// patient_key alone names a household: two family members on one mobile share
+// it, so a hash omitting hms_patient_id would still verify after the field
+// naming the actual person was altered.
+//
+// Asserting merely that two patients' hashes DIFFER would prove nothing — the
+// consent id and timestamp differ per capture, so that passes either way.
+func TestArtifactHashBindsThePatientNotJustTheHousehold(t *testing.T) {
+	repo := &fakeIdentityRepo{existing: map[string]*model.Consent{}}
+	svc := NewConsentService(repo, fakeSecrets{}, okSessions{})
+
+	got, _, err := svc.Capture(context.Background(), "hosp-1", "1.2.3.4", &model.CaptureConsentRequest{
+		Mobile:       familyMobile,
+		SessionID:    "sess-son",
+		Purposes:     []string{"treatment"},
+		HMSPatientID: "PA-son",
+	})
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+
+	want := sharedcrypto.ComputeArtifactHash(
+		got.ID.String(),
+		got.HospitalID,
+		got.PatientKey,
+		got.HMSPatientID,
+		canonicalPurposeMap(got.Purposes),
+		hashTimestamp(got.CreatedAt),
+	)
+	if got.ArtifactHash != want {
+		t.Fatalf("artifact hash does not recompute with hms_patient_id in the field set:\n got  %s\n want %s",
+			got.ArtifactHash, want)
+	}
+}
