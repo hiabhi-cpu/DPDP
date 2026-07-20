@@ -84,9 +84,15 @@ func insertConsentRowV(t *testing.T, admin *pgx.Conn, hospitalID, patientKey, ev
 	}
 	_, err := admin.Exec(context.Background(), `
 		INSERT INTO consent.consent_vault
-			(id, hospital_id, patient_key, type, status, purposes, otp_verified, artifact_hash, version)
-		VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8)`,
-		uuid.New(), hospitalID, patientKey, evType, status, []byte(purposesJSON),
+			(id, hospital_id, patient_key, hms_patient_id, type, status, purposes, otp_verified, artifact_hash, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)`,
+		uuid.New(), hospitalID, patientKey,
+		// Consent rows must name a patient (migration 0015). Derived from
+		// patient_key so every row in one patient's version chain carries the
+		// SAME id, as real data does — "latest row wins" depends on those rows
+		// being one patient.
+		hmsIDFor(patientKey),
+		evType, status, []byte(purposesJSON),
 		hex.EncodeToString(b), version,
 	)
 	if err != nil {

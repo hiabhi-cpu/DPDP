@@ -28,6 +28,7 @@ package isolation
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -100,9 +101,12 @@ func seedConsentRow(t *testing.T, admin *pgx.Conn, hospitalID, patientKey string
 	ctx := context.Background()
 	_, err := admin.Exec(ctx, `
 		INSERT INTO consent.consent_vault
-			(id, hospital_id, patient_key, type, status, purposes, otp_verified, artifact_hash)
-		VALUES ($1, $2, $3, 'CONSENT_GIVEN', 'ACTIVE', $4, true, $5)`,
+			(id, hospital_id, patient_key, hms_patient_id, type, status, purposes, otp_verified, artifact_hash)
+		VALUES ($1, $2, $3, $4, 'CONSENT_GIVEN', 'ACTIVE', $5, true, $6)`,
 		uuid.New(), hospitalID, patientKey,
+		// Identity is (patient_key, hms_patient_id); consent rows must name a
+		// patient (chk_consent_rows_have_hms_patient_id, migration 0015).
+		hmsIDFor(patientKey),
 		[]byte(`{"treatment":"ACTIVE"}`),
 		hex.EncodeToString(mustRand(t, 32)),
 	)
@@ -311,5 +315,32 @@ func TestAppRoleIsNotPrivileged(t *testing.T) {
 	}
 	if bypassRLS {
 		t.Error("runtime role has BYPASSRLS — RLS is silently bypassed")
+	}
+}
+
+// hmsIDFor derives a stable, opaque HMS patient ID from a patient_key. Consent
+// rows must name a patient (chk_consent_rows_have_hms_patient_id, migration
+// 0015) because identity is the PAIR (patient_key, hms_patient_id) — a mobile
+// alone identifies a household, not a person. Deriving rather than randomising
+// keeps one patient's version chain under a single id.
+func hmsIDFor(patientKey string) string {
+	sum := sha256.Sum256([]byte(patientKey))
+	return "PA-" + hex.EncodeToString(sum[:6])
+}
+
+// seedConsentRowFor is seedConsentRow with an explicit hms_patient_id, for
+// tests that need two people under one patient_key (a family sharing a mobile).
+func seedConsentRowFor(t *testing.T, admin *pgx.Conn, hospitalID, patientKey, hmsPatientID string) {
+	t.Helper()
+	_, err := admin.Exec(context.Background(), `
+		INSERT INTO consent.consent_vault
+			(id, hospital_id, patient_key, hms_patient_id, type, status, purposes, otp_verified, artifact_hash)
+		VALUES ($1, $2, $3, $4, 'CONSENT_GIVEN', 'ACTIVE', $5, true, $6)`,
+		uuid.New(), hospitalID, patientKey, hmsPatientID,
+		[]byte(`{"treatment":"ACTIVE"}`),
+		hex.EncodeToString(mustRand(t, 32)),
+	)
+	if err != nil {
+		t.Fatalf("seed consent row for %s/%s: %v", hospitalID, hmsPatientID, err)
 	}
 }
