@@ -59,8 +59,21 @@ same basis as that patient's consent rows, so the link between an override and
 the consent history the DPO review needs is lost. It degrades badly exactly
 where the stakes are highest.
 
-The chosen approach also avoids changing `ComputeArtifactHash` inputs, so no
-existing artifact hash is invalidated.
+The chosen approach does not change key *derivation*, so `patient_key` values
+themselves are stable.
+
+**Amended during implementation (2026-07-20, user-approved):** the whole-branch
+review found that `artifact_hash` covered `patient_key` but not
+`hms_patient_id` — so the row's tamper evidence attested that *the household*
+consented, the very claim this spec establishes is invalid, and would still
+verify after the field naming the actual person was altered. `hms_patient_id`
+was added to the hashed field set at all three consent-service call sites.
+
+This was free only because of timing: no verifier exists in the repo (the hash
+is write-only today) and the vault was truncated, so no stored hash was
+invalidated. Once real consent rows exist, the same change would require a
+versioned-hash scheme — the `v1|` prefix machinery on `patient_key` exists for
+exactly that reason and has no equivalent on `artifact_hash`.
 
 A third option — `patient_key = HMAC(hms_patient_id)` — was rejected because
 `hms_patient_id` is already stored in the clear on the vault, so hashing it adds

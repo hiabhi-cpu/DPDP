@@ -22,7 +22,8 @@ const (
 
 	// Find queries will be built dynamically based on filters, but here are the bases
 	queryFindEventsBase = `
-		SELECT id, hospital_id, event_type, actor_id, actor_type, patient_key,
+		SELECT id, hospital_id, event_type, actor_id, actor_type,
+			   COALESCE(patient_key, '') AS patient_key,
 			   consent_id, request_id, COALESCE(host(ip_address), '') AS ip_address, details, created_at
 		FROM audit.audit_log
 		WHERE hospital_id = $1
