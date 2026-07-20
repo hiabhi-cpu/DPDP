@@ -148,14 +148,14 @@ func (r *pgxConsentRepository) Insert(ctx context.Context, consent *model.Consen
 	return nil
 }
 
-// GetLatestByPatientKey returns the most recent consent row for a patient
+// GetLatestByPatientAndHMS returns the most recent consent row for one patient
 // (regardless of aggregate status), or nil if none exists. It returns the latest
 // row even when fully withdrawn, because Check and Withdraw both need the current
 // per-purpose map — the caller inspects Purposes to decide per purpose.
-func (r *pgxConsentRepository) GetLatestByPatientKey(ctx context.Context, hospitalID string, patientKey string) (*model.Consent, error) {
-	c, err := r.getOneConsent(ctx, hospitalID, queryGetLatestConsent, hospitalID, patientKey)
+func (r *pgxConsentRepository) GetLatestByPatientAndHMS(ctx context.Context, hospitalID, patientKey, hmsPatientID string) (*model.Consent, error) {
+	c, err := r.getOneConsent(ctx, hospitalID, queryGetLatestConsent, hospitalID, patientKey, hmsPatientID)
 	if err != nil {
-		return nil, fmt.Errorf("repository.GetLatestByPatientKey: %w", err)
+		return nil, fmt.Errorf("repository.GetLatestByPatientAndHMS: %w", err)
 	}
 	return c, nil
 }

@@ -147,7 +147,7 @@ func (s *consentService) Capture(ctx context.Context, hospitalID, ip string, req
 	// Re-grant of a withdrawn purpose is out of scope for now: capture is blocked
 	// only while some purpose is still active. After a full withdrawal (no active
 	// purposes) a fresh capture is allowed.
-	existing, err := s.repo.GetLatestByPatientKey(ctx, hospitalID, patientKey)
+	existing, err := s.repo.GetLatestByPatientAndHMS(ctx, hospitalID, patientKey, req.HMSPatientID)
 	if err != nil {
 		return nil, false, fmt.Errorf("ConsentService.Capture: failed to check existing: %w", err)
 	}
@@ -239,7 +239,7 @@ func (s *consentService) Check(ctx context.Context, hospitalID, ip string, req *
 		if err != nil {
 			return nil, fmt.Errorf("ConsentService.Check: %w", err)
 		}
-		latest, err = s.repo.GetLatestByPatientKey(ctx, hospitalID, patientKey)
+		latest, err = s.repo.GetLatestByPatientAndHMS(ctx, hospitalID, patientKey, req.HMSPatientID)
 		if err != nil {
 			return nil, fmt.Errorf("ConsentService.Check: %w", err)
 		}
@@ -301,7 +301,7 @@ func (s *consentService) Withdraw(ctx context.Context, hospitalID, ip string, re
 		return fmt.Errorf("ConsentService.Withdraw: %w", err)
 	}
 
-	existing, err := s.repo.GetLatestByPatientKey(ctx, hospitalID, patientKey)
+	existing, err := s.repo.GetLatestByPatientAndHMS(ctx, hospitalID, patientKey, req.HMSPatientID)
 	if err != nil {
 		return fmt.Errorf("ConsentService.Withdraw: %w", err)
 	}
@@ -407,7 +407,7 @@ func (s *consentService) Grant(ctx context.Context, hospitalID, ip string, req *
 		return nil, false, fmt.Errorf("ConsentService.Grant: %w", err)
 	}
 
-	existing, err := s.repo.GetLatestByPatientKey(ctx, hospitalID, patientKey)
+	existing, err := s.repo.GetLatestByPatientAndHMS(ctx, hospitalID, patientKey, req.HMSPatientID)
 	if err != nil {
 		return nil, false, fmt.Errorf("ConsentService.Grant: %w", err)
 	}

@@ -79,14 +79,14 @@ type OutboxRecord struct {
 }
 
 // CaptureConsentRequest is the body for POST /api/v1/consent/capture.
-// HMSPatientID is the hospital's own opaque patient ID (from the HMS webhook);
-// optional — a kiosk without HMS integration may omit it. Persisting it enables
-// non-PII consent checks by HMS ID (plan §11).
+// HMSPatientID is the hospital's own opaque patient ID (from the HMS webhook)
+// and is REQUIRED: identity is the pair (mobile, hms_patient_id), because a
+// family shares one mobile number.
 type CaptureConsentRequest struct {
 	Mobile       string   `json:"mobile" binding:"required,len=10"`
 	SessionID    string   `json:"session_id" binding:"required"`
 	Purposes     []string `json:"purposes" binding:"required,min=1"`
-	HMSPatientID string   `json:"hms_patient_id"`
+	HMSPatientID string   `json:"hms_patient_id" binding:"required"`
 }
 
 // CheckConsentRequest is the body for POST /api/v1/consent/check. Purpose is
@@ -113,16 +113,18 @@ type CheckConsentResponse struct {
 // Purposes lists which purposes to withdraw; empty means withdraw all currently
 // active purposes.
 type WithdrawConsentRequest struct {
-	Mobile    string   `json:"mobile" binding:"required,len=10"`
-	SessionID string   `json:"session_id" binding:"required"`
-	Purposes  []string `json:"purposes"`
+	Mobile       string   `json:"mobile" binding:"required,len=10"`
+	HMSPatientID string   `json:"hms_patient_id" binding:"required"`
+	SessionID    string   `json:"session_id" binding:"required"`
+	Purposes     []string `json:"purposes"`
 }
 
 // GrantConsentRequest is the body for POST /api/consent/v1/grant. It extends an
 // existing consent chain — re-granting a withdrawn purpose or adding a new one.
 // Requires an existing chain; first-time consent uses /capture.
 type GrantConsentRequest struct {
-	Mobile    string   `json:"mobile" binding:"required,len=10"`
-	SessionID string   `json:"session_id" binding:"required"`
-	Purposes  []string `json:"purposes" binding:"required,min=1"`
+	Mobile       string   `json:"mobile" binding:"required,len=10"`
+	HMSPatientID string   `json:"hms_patient_id" binding:"required"`
+	SessionID    string   `json:"session_id" binding:"required"`
+	Purposes     []string `json:"purposes" binding:"required,min=1"`
 }

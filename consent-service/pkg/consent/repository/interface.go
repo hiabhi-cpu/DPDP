@@ -18,9 +18,10 @@ type ConsentRepository interface {
 	// InsertRenewal writes a renewal row (re-grant / add purpose) and its audit
 	// outbox row in one transaction.
 	InsertRenewal(ctx context.Context, consent *model.Consent, outbox *model.OutboxRecord) error
-	// GetLatestByPatientKey returns the most recent consent row (any status), or
-	// nil. Callers inspect its per-purpose Purposes map for current state.
-	GetLatestByPatientKey(ctx context.Context, hospitalID string, patientKey string) (*model.Consent, error)
+	// GetLatestByPatientAndHMS returns the most recent consent row (any status)
+	// for one patient — identified by the pair (patient_key, hms_patient_id) —
+	// or nil. Callers inspect its per-purpose Purposes map for current state.
+	GetLatestByPatientAndHMS(ctx context.Context, hospitalID, patientKey, hmsPatientID string) (*model.Consent, error)
 	// GetLatestByHMSPatientID returns the most recent consent row for a hospital's
 	// opaque HMS patient ID (doctor/HMS access path), or nil.
 	GetLatestByHMSPatientID(ctx context.Context, hospitalID, hmsPatientID string) (*model.Consent, error)

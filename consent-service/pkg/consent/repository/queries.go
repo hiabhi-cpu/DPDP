@@ -17,10 +17,13 @@ const (
 	consentColumns = `id, hospital_id, patient_key, hms_patient_id, type, status,
 		purposes, created_at, previous_id, version, artifact_hash`
 
+	// Identity is the PAIR (patient_key, hms_patient_id). patient_key alone is a
+	// contact channel — families share one mobile, so scoping by it alone returns
+	// a relative's row. See docs/superpowers/specs/2026-07-20-patient-identity-key-design.md
 	queryGetLatestConsent = `
 		SELECT ` + consentColumns + `
 		FROM consent.consent_vault
-		WHERE hospital_id = $1 AND patient_key = $2
+		WHERE hospital_id = $1 AND patient_key = $2 AND hms_patient_id = $3
 		ORDER BY version DESC LIMIT 1
 	`
 
