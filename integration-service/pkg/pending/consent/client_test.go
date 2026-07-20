@@ -34,10 +34,10 @@ func TestActiveHMSPatientIDs_HappyPath(t *testing.T) {
 		t.Fatalf("ActiveHMSPatientIDs returned error: %v", err)
 	}
 	if !active["PA-mother"] {
-		t.Fatalf("active[9876543210] = %v, want true", active["PA-mother"])
+		t.Fatalf("active[PA-mother] = %v, want true", active["PA-mother"])
 	}
-	if active["9000000000"] {
-		t.Fatalf("active[9000000000] = %v, want false/absent", active["9000000000"])
+	if active["PA-son"] {
+		t.Fatalf("active[PA-son] = %v, want false/absent", active["PA-son"])
 	}
 
 	if gotPath != "/api/v1/consent/active" {
@@ -139,7 +139,7 @@ func TestActiveHMSPatientIDs_ChunksAt200AndMergesResults(t *testing.T) {
 }
 
 func TestActiveHMSPatientIDs_DedupesBeforeSending(t *testing.T) {
-	var gotMobiles []string
+	var gotIDs []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			HMSPatientIDs []string `json:"hms_patient_ids"`
@@ -147,7 +147,7 @@ func TestActiveHMSPatientIDs_DedupesBeforeSending(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("server: decode request body: %v", err)
 		}
-		gotMobiles = body.HMSPatientIDs
+		gotIDs = body.HMSPatientIDs
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"active":["PA-mother"]}`))
 	}))
@@ -160,11 +160,11 @@ func TestActiveHMSPatientIDs_DedupesBeforeSending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ActiveHMSPatientIDs returned error: %v", err)
 	}
-	if len(gotMobiles) != 1 {
-		t.Fatalf("request carried %d mobiles, want 1 (deduped): %v", len(gotMobiles), gotMobiles)
+	if len(gotIDs) != 1 {
+		t.Fatalf("request carried %d ids, want 1 (deduped): %v", len(gotIDs), gotIDs)
 	}
 	if !got["PA-mother"] {
-		t.Fatalf("active[9876543210] = false, want true")
+		t.Fatalf("active[PA-mother] = false, want true")
 	}
 }
 

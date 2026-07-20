@@ -162,8 +162,22 @@ func TestActiveHMSPatientIDsDiscriminatesWithinAHousehold(t *testing.T) {
 	hosp := createStatsHospital(t, admin)
 
 	// ONE mobile, therefore ONE patient_key, shared by mother and son.
+	//
+	// The son gets a WITHDRAWN row rather than no row at all, so he is reported
+	// inactive on the merits rather than by absence.
+	//
+	// Note what this test can and cannot prove. It pins the behaviour, but it is
+	// NOT a regression guard for the household bug: re-keying this query to
+	// patient_key makes DISTINCT ON collapse the two rows and drop one, which is
+	// a false NEGATIVE (verified by running that mutation — this test still
+	// passes, and which row survives is an arbitrary tie-break between two
+	// version-1 rows). The son can never come back wrongly ACTIVE, because
+	// ActiveHMSPatientIDs keys its result map on each row's own hms_patient_id —
+	// a row can only ever mark its own person active. That is structural, not
+	// something this or any test enforces.
 	householdKey := randomPatientKey(t)
 	insertConsentRowFor(t, admin, hosp, householdKey, "PA-mother", "CONSENT_GIVEN", "ACTIVE", `{"treatment":"ACTIVE"}`)
+	insertConsentRowFor(t, admin, hosp, householdKey, "PA-son", "WITHDRAWAL", "WITHDRAWN", `{"treatment":"WITHDRAWN"}`)
 
 	active, err := repository.New(pool).ActiveHMSPatientIDs(ctx, hosp, []string{"PA-mother", "PA-son"})
 	if err != nil {
@@ -173,7 +187,7 @@ func TestActiveHMSPatientIDsDiscriminatesWithinAHousehold(t *testing.T) {
 		t.Fatal("the mother consented but is not reported active")
 	}
 	if active["PA-son"] {
-		t.Fatal("the son has NOT consented but is reported active — the queue would badge him " +
+		t.Fatal("the son withdrew but is reported active — the queue would badge him " +
 			"'already consented' and disable his Send code button, silently denying him capture")
 	}
 }

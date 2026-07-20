@@ -194,11 +194,14 @@ func (r *pgxConsentRepository) GetByIdempotencyKey(ctx context.Context, hospital
 // SECURITY, so querying r.pool directly returns zero rows and no error, which is
 // indistinguishable from "nobody has consented".
 //
-// The active test is AnyActive() on the latest row, deliberately the same
-// predicate Capture blocks on (consent_service.go:154) and NOT the status column
-// — emergency-service writes rows to this table whose status is not derived from
-// the purposes map, so the two can drift. Keeping the predicate identical is what
-// guarantees the queue can never disagree with what capture will do.
+// The active test is AnyActive() on the latest row, NOT the status column —
+// emergency-service writes rows here whose status is not derived from the
+// purposes map, so the two can drift. Capture applies the same AnyActive()
+// predicate, so the queue and capture agree on what "already consented" means.
+//
+// They are scoped differently on purpose: Capture keys on the full pair, this
+// keys on hms_patient_id alone. See the INVARIANT note on
+// queryLatestByHMSPatientIDs for the one case where that matters.
 func (r *pgxConsentRepository) ActiveHMSPatientIDs(ctx context.Context, hospitalID string, hmsPatientIDs []string) (map[string]bool, error) {
 	active := make(map[string]bool, len(hmsPatientIDs))
 	if len(hmsPatientIDs) == 0 {

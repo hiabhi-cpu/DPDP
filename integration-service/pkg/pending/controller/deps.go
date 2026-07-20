@@ -16,8 +16,9 @@ type PendingStore interface {
 }
 
 // ConsentChecker is the slice of consent-service the read API needs: given the
-// caller's Authorization header and a batch of raw mobiles, which of them already
-// have an active consent? Defined here (consumer side) alongside PendingStore.
+// caller's Authorization header and a batch of HMS patient IDs, which of those
+// patients already have an active consent? Keyed by patient, not by mobile — a
+// mobile names a household. Defined here (consumer side) alongside PendingStore.
 type ConsentChecker interface {
 	ActiveHMSPatientIDs(ctx context.Context, authHeader string, hmsPatientIDs []string) (map[string]bool, error)
 }
