@@ -30,7 +30,7 @@ This is the task that fixes the bug. `GetLatestByPatientKey` is the single funct
 - Modify: `consent-service/pkg/consent/repository/queries.go:21-25`
 - Modify: `consent-service/pkg/consent/repository/interface.go:22-23`
 - Modify: `consent-service/pkg/consent/repository/repository.go:151-161`
-- Modify: `consent-service/pkg/consent/model/consent.go:97-101,115-118,123-127`
+- Modify: `consent-service/pkg/consent/model/consent.go:81-90` (CaptureConsentRequest), `:112-119` (WithdrawConsentRequest), `:121-128` (GrantConsentRequest). Do **not** touch `CheckConsentRequest` at `:92-101` — that is Task 2.
 - Modify: `consent-service/pkg/consent/service/consent_service.go:151,304,400`
 - Test: `consent-service/pkg/consent/service/identity_test.go` (create)
 
@@ -236,7 +236,7 @@ func (r *pgxConsentRepository) GetLatestByPatientAndHMS(ctx context.Context, hos
 
 - [ ] **Step 5: Require the HMS ID on the three write requests**
 
-In `consent-service/pkg/consent/model/consent.go`, replace the `CaptureConsentRequest` block (and its doc comment) at lines 92-101:
+In `consent-service/pkg/consent/model/consent.go`, replace the `CaptureConsentRequest` block (and its doc comment) at lines 81-90:
 
 ```go
 // CaptureConsentRequest is the body for POST /api/v1/consent/capture.
@@ -315,7 +315,7 @@ a relative's active row and returned 409."
 ### Task 2: Check drops mobile entirely
 
 **Files:**
-- Modify: `consent-service/pkg/consent/model/consent.go:92-101` (the `CheckConsentRequest` block)
+- Modify: `consent-service/pkg/consent/model/consent.go:92-101` (the `CheckConsentRequest` block — line numbers as they stand after Task 1, which does not touch this struct)
 - Modify: `consent-service/pkg/consent/controller/consent_handler.go:60-92`
 - Modify: `consent-service/pkg/consent/service/consent_service.go:220-270`
 - Test: `consent-service/pkg/consent/service/identity_test.go` (append)
@@ -1140,6 +1140,38 @@ git commit -m "docs(plan): record the patient identity fix"
 
 ---
 
-## Follow-up, deliberately not in this plan
+### Task 8: Re-key the reception queue's consent lookup — ON THE QUEUE BRANCH, AFTER THIS MERGES
 
-The **returning-patient reception-queue notice** is designed and approved through two sections, recorded at the end of the spec. It is a separate plan: it adds an aggregate `POST /api/consent/v1/active` endpoint to consent-service, turns admin-bff's `/reception/registrations` into a real handler, and renders an `ALREADY_CONSENTED` badge that clears itself after 15 seconds. It should be re-checked against the final shape of this change before it is planned in detail.
+**This task does not run on `fix/patient-identity-key`.** The code it changes lives on the unmerged branch `feat/returning-patient-queue` (11 commits ahead of main, 19 behind as of 2026-07-20). Sequence:
+
+1. Land Tasks 1-7 and merge `fix/patient-identity-key` to main.
+2. Rebase `feat/returning-patient-queue` onto main.
+3. Do this task there, then merge it.
+
+**Why this is a blocker, not a nicety.** That branch answers "has this patient already consented?" with `ActiveMobiles(ctx, hospitalID, mobiles []string)`, keyed by `patientKeyFor(mobile)` — a household lookup. Merged as-is, a son whose mother consented is badged "Already consented — no action" **and his Send code button is disabled**. Reception never sends him a code, nothing errors, and he is silently denied consent capture. That is strictly worse than the wasted-walk dead-end the branch was built to fix, and this identity change is what makes it reachable: capture would finally accept him at the same moment the queue stops offering him a code.
+
+**Files (paths as they exist on that branch):**
+- Modify: `consent-service/pkg/consent/repository/` — the `ActivePatientKeys` query and its interface entry
+- Modify: `consent-service/pkg/consent/service/consent_service.go` — `ActiveMobiles`
+- Modify: `consent-service/pkg/consent/controller/` + routes — the `/api/v1/consent/active` request model
+- Modify: `integration-service/pkg/pending/consent/client.go` — the batch sender
+- Test: the existing suites on that branch for each of the above
+
+**The change:** `ActiveMobiles(ctx, hospitalID, mobiles []string) ([]string, error)` becomes `ActiveHMSPatientIDs(ctx, hospitalID, hmsPatientIDs []string) ([]string, error)`, backed by a query over `hms_patient_id` + `AnyActive()` rather than `patient_key`. The staged registration already carries `HMSPatientID` alongside `Mobile`, so integration-service sends the field it already has — and stops sending raw mobiles to consent-service on every poll, which is a privacy improvement in its own right.
+
+Everything else on that branch carries over untouched: the no-audit-write property, the 200-per-chunk cap, the dedupe-and-chunk sender, the whole-batch fail-open, and the 3s `lookupTimeout` bounding the entire chunked lookup.
+
+- [ ] **Step 1: Re-verify this task against that branch before starting.** It was written from the branch's ledger, not from its code. Read `ActiveMobiles` and the client, confirm the shapes above, and correct this task where it drifted.
+- [ ] **Step 2: Write the failing test** — a batch containing two HMS IDs that share one mobile, where only one has consented, must return exactly that one.
+- [ ] **Step 3: Re-key the repository query, service method, endpoint model, and sender.**
+- [ ] **Step 4: Run both services' suites, including the integration-tagged ones.**
+- [ ] **Step 5: Verify on the live stack** — stage two registrations sharing a mobile with different `patientId`, consent as one, and confirm the queue badges only that one.
+- [ ] **Step 6: Commit.**
+
+---
+
+## Already built, do not rebuild
+
+The **returning-patient reception-queue notice** is implemented and final-review-clean on `feat/returning-patient-queue` (plan `docs/superpowers/plans/2026-07-16-returning-patient-queue.md` and spec `docs/superpowers/specs/2026-07-16-returning-patient-queue-design.md`, both on that branch). It flags consented rows in integration-service's `List`, and the dashboard renders the badge with a 15-second auto-hide.
+
+It was independently re-designed during the 2026-07-20 brainstorm that produced this plan, because the branch was never checked. The designs agree on nearly everything; where they differ, **the branch is the implementation of record**. Its only defect is the mobile keying, which is Task 8.

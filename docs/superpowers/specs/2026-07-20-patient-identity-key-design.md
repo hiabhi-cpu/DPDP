@@ -209,20 +209,28 @@ The first test is the whole point — it fails today with a 409:
   it already sends `hms_patient_id` — evidence the client contract did not
   quietly break.
 
-## Follow-up, not in this spec
+## The reception queue: already built, and blocked on this
 
-The **returning-patient reception-queue notice** was brainstormed first and
-parked to do this fix first. Its design, approved through two sections:
+The **returning-patient reception-queue notice** was brainstormed alongside this
+spec and then discovered to already exist, implemented and final-review-clean,
+on the unmerged branch `feat/returning-patient-queue` (its own plan and spec,
+dated 2026-07-16, live on that branch). The brainstorm did not check `git
+branch` first. The two designs agree on nearly everything; the branch is the
+implementation of record.
 
-- admin-bff's `/reception/registrations` stops being a blind `ForwardGet` and
-  becomes a handler that asks consent-service a new no-audit endpoint
-  (`POST /api/consent/v1/active`, `{hms_patient_id}` → `{active: bool}`) per
-  row, returns matching rows as `ALREADY_CONSENTED`, and fire-and-forgets a
-  `DONE` status write. Consent-service unreachable → rows pass through as
-  `PENDING`, degrading to today's behaviour.
-- Reception renders `ALREADY_CONSENTED` as a badge with no action button, held
-  on screen for 15 seconds by a client-side timer, then dropped.
+**That branch must not merge before this fix, and must be re-keyed after it.**
+It answers "has this patient already consented?" with
+`ActiveMobiles(ctx, hospitalID, mobiles []string)`, keyed by
+`patientKeyFor(mobile)` — a household lookup, the exact defect this spec
+corrects.
 
-That design predates this spec and assumed identity-by-`hms_patient_id`, which
-this spec confirms as correct. It needs re-checking against the final shape of
-`/active` before implementation.
+Merged as it stands, a son whose mother consented is badged "Already consented
+— no action" **and his Send code button is disabled**: reception never sends him
+a code, nothing errors, and he is silently denied consent capture. That is worse
+than the wasted-walk dead-end the branch exists to fix — and this change is what
+makes it reachable, because capture would finally accept him at the moment the
+queue stops offering him a code.
+
+The re-keying (`ActiveMobiles` → `ActiveHMSPatientIDs`) is Task 8 of
+`docs/superpowers/plans/2026-07-20-patient-identity-key.md`, scoped to run on
+that branch after this one merges.
