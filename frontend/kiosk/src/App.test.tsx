@@ -4,7 +4,12 @@ import userEvent from "@testing-library/user-event";
 import globalCss from "./styles/global.css?raw";
 import { App } from "./App";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  // Restore timers here, not at the end of a test body: a failing assertion
+  // mid-test would otherwise leak fake timers into every later test.
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 function mockFetchSequence(responses: Response[]) {
   const fn = vi.fn();
@@ -36,7 +41,6 @@ describe("code-only kiosk", () => {
 
     vi.advanceTimersByTime(6000);
     await waitFor(() => expect(screen.getByLabelText(/6-digit code/i)).toBeInTheDocument());
-    vi.useRealTimers();
   });
 
   it("shows a generic retry message on a bad code and stays on the code step", async () => {
@@ -101,8 +105,6 @@ describe("code-only kiosk", () => {
     checkboxes.forEach((checkbox) => {
       expect(checkbox).toBeDisabled();
     });
-
-    vi.useRealTimers();
   });
 
   it("layout uses no fixed pixel widths on the shell/card", () => {
